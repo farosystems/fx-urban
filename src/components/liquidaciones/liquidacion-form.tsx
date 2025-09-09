@@ -282,6 +282,7 @@ export function LiquidacionForm({ onLiquidacionGuardada }: { onLiquidacionGuarda
                 monto: liquidacion.neto_liquidado,
                 fk_tipo_gasto: sueldoTipoGastoId!,
                 descripcion: `Pago de sueldo liquidado del ${format(new Date(liquidacion.desde), 'dd/MM/yy')} al ${format(new Date(liquidacion.hasta), 'dd/MM/yy')}`,
+                fecha_gasto: format(new Date(), 'yyyy-MM-dd'),
                 fk_lote_operaciones: loteAbierto,
                 fk_cuenta_tesoreria: cuentaParaGasto,
                 fk_usuario: usuarioActual.id,
