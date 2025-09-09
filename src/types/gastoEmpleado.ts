@@ -1,6 +1,7 @@
 export interface GastoEmpleado {
   id: number;
   creado_el: string;
+  fecha_gasto: string;
   fk_tipo_gasto: number;
   monto: number;
   descripcion: string | null;

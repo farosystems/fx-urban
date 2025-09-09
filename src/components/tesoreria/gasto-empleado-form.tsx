@@ -50,6 +50,7 @@ export function GastoEmpleadoForm({ onSubmit, onCancel, isLoading = false }: Gas
   const { user } = useUser();
   const [form, setForm] = useState<any>({
     monto: 0,
+    fecha_gasto: format(new Date(), 'yyyy-MM-dd'),
     fk_lote_operaciones: null,
     fk_tipo_gasto: null,
     fk_empleado: null,
@@ -207,6 +208,10 @@ export function GastoEmpleadoForm({ onSubmit, onCancel, isLoading = false }: Gas
       setErrorModal({ open: true, message: "El monto debe ser mayor a 0." });
       return;
     }
+    if (!form.fecha_gasto) {
+      setErrorModal({ open: true, message: "Debe seleccionar una fecha para el gasto." });
+      return;
+    }
     await onSubmit(form as CreateGastoEmpleadoData);
   };
 
@@ -233,7 +238,7 @@ export function GastoEmpleadoForm({ onSubmit, onCancel, isLoading = false }: Gas
               <SelectTrigger>
                 <SelectValue placeholder="Seleccione un tipo" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent position="popper" sideOffset={5}>
                 {tiposGasto.map((t: TipoGasto) => (
                   <SelectItem key={t.id} value={String(t.id)}>{t.descripcion || "Sin descripción"}</SelectItem>
                 ))}
@@ -249,7 +254,7 @@ export function GastoEmpleadoForm({ onSubmit, onCancel, isLoading = false }: Gas
               <SelectTrigger>
                 <SelectValue placeholder="Seleccione un empleado" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent position="popper" sideOffset={5}>
                 {empleados.map(e => <SelectItem key={e.id} value={String(e.id)}>{e.nombre} {e.apellido}</SelectItem>)}
               </SelectContent>
             </Select>
@@ -270,6 +275,18 @@ export function GastoEmpleadoForm({ onSubmit, onCancel, isLoading = false }: Gas
         </div>
 
         <div>
+          <label className="block mb-1 font-medium">Fecha del Gasto *</label>
+          <Input
+            type="date"
+            name="fecha_gasto"
+            value={form.fecha_gasto}
+            onChange={handleInputChange}
+            required
+            className="max-w-xs"
+          />
+        </div>
+
+        <div>
           <label className="block mb-1 font-medium">Cuenta Tesorería *</label>
           <Select
             value={form.fk_cuenta_tesoreria ? String(form.fk_cuenta_tesoreria) : ""}
@@ -280,7 +297,7 @@ export function GastoEmpleadoForm({ onSubmit, onCancel, isLoading = false }: Gas
             <SelectTrigger className="w-full">
               <SelectValue placeholder="Seleccionar cuenta" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent position="popper" sideOffset={5}>
               {cuentasTesoreria
                 .filter(ct => ct.descripcion.toLowerCase() !== 'cuenta corriente')
                 .map((ct: CuentaTesoreria) => (
@@ -301,7 +318,7 @@ export function GastoEmpleadoForm({ onSubmit, onCancel, isLoading = false }: Gas
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Seleccionar usuario" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent position="popper" sideOffset={5}>
                 {usuarios.map((u: Usuario) => (
                   <SelectItem key={u.id} value={String(u.id)}>{u.nombre}</SelectItem>
                 ))}

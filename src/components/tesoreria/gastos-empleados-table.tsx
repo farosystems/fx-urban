@@ -24,6 +24,17 @@ const PAGE_SIZE = 10;
 export function GastosEmpleadosTable({ data }: GastosEmpleadosTableProps) {
   const [search, setSearch] = React.useState("");
   const [page, setPage] = React.useState(1);
+  
+  // Función para formatear fechas DATE correctamente evitando problemas de zona horaria
+  const formatDateSafe = (dateString: string | null) => {
+    if (!dateString) return "";
+    // Si es solo una fecha (YYYY-MM-DD), agregar hora local para evitar UTC conversion
+    if (dateString.length === 10) {
+      return new Date(dateString + 'T00:00:00').toLocaleDateString("es-AR");
+    }
+    // Si ya tiene hora, usar como está
+    return new Date(dateString).toLocaleDateString("es-AR");
+  };
   const [columnVisibility, setColumnVisibility] = React.useState({
     id: true,
     fecha: true,
@@ -141,7 +152,7 @@ export function GastosEmpleadosTable({ data }: GastosEmpleadosTableProps) {
               paginated.map((gasto) => (
                 <tr key={gasto.id} className="border-b hover:bg-blue-50 transition-colors">
                   {columnVisibility.id && <td className="px-2 py-1 text-left">{gasto.id}</td>}
-                  {columnVisibility.fecha && <td className="px-2 py-1">{gasto.creado_el ? new Date(gasto.creado_el).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" }) : ""}</td>}
+                  {columnVisibility.fecha && <td className="px-2 py-1">{formatDateSafe(gasto.fecha_gasto)}</td>}
                   {columnVisibility.tipo && <td className="px-2 py-1">{tiposGasto.find(t => t.id === gasto.fk_tipo_gasto)?.descripcion || "-"}</td>}
                   {columnVisibility.monto && <td className="px-2 py-1">{gasto.monto != null ? formatCurrency(gasto.monto, "ARS", "es-AR") : ""}</td>}
                   {columnVisibility.descripcion && <td className="px-2 py-1">{gasto.descripcion}</td>}
@@ -237,6 +248,10 @@ export function GastosEmpleadosTable({ data }: GastosEmpleadosTableProps) {
                 <div className="font-semibold text-gray-700 mb-2 flex items-center gap-2">
                   <Calendar className="w-4 h-4 text-gray-500" />
                   Fechas
+                </div>
+                <div className="flex justify-between mb-1">
+                  <span className="text-gray-600">Fecha del gasto</span>
+                  <span className="text-gray-900 font-semibold">{formatDateSafe(selectedGasto.fecha_gasto)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Fecha de creación</span>
