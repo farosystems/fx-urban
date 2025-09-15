@@ -25,6 +25,31 @@ export async function getPagosCuentaCorriente() {
   return data as PagoCuentaCorriente[];
 }
 
+export async function getPagosCuentaCorrienteConDetalles() {
+  const { data, error } = await supabase
+    .from("pagos_cuenta_corriente")
+    .select(`
+      *,
+      cuenta_corriente:cuentas_corrientes!fk_id_cuenta_corriente(
+        id,
+        fk_id_cliente,
+        cliente:entidades!fk_id_cliente(
+          id,
+          razon_social,
+          tipo_doc,
+          num_doc
+        )
+      ),
+      cuenta_tesoreria:cuentas_tesoreria!fk_id_cuenta_tesoreria(
+        id,
+        descripcion
+      )
+    `)
+    .order("creado_el", { ascending: false });
+  if (error) throw error;
+  return data;
+}
+
 export async function createPagoCuentaCorriente(pago: CreatePagoCuentaCorrienteData) {
   const { data, error } = await supabase
     .from("pagos_cuenta_corriente")

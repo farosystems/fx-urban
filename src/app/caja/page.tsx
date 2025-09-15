@@ -35,7 +35,7 @@ import { TipoComprobante } from "@/types/tipoComprobante";
 import { formatCurrency, DEFAULT_CURRENCY, DEFAULT_LOCALE } from "@/lib/utils";
 import { BreadcrumbBar } from "@/components/BreadcrumbBar";
 import { getClientes } from "@/services/clientes";
-import { getPagosCuentaCorriente } from "@/services/pagosCuentaCorriente";
+import { getPagosCuentaCorrienteConDetalles } from "@/services/pagosCuentaCorriente";
 import { LoteOperacion } from "@/types/loteOperacion";
 import { generateGastosPDF } from "@/utils/generateGastosPDF";
 
@@ -445,7 +445,7 @@ export default function CajaPage() {
     // Totales alineados a la derecha
     let afterTotalesY = afterTablesY + 28;
     // Tabla de pagos
-    const pagosCuentaCorriente = await getPagosCuentaCorriente();
+    const pagosCuentaCorriente = await getPagosCuentaCorrienteConDetalles();
     const pagosLote = pagosCuentaCorriente.filter(p => p.fk_id_lote === aperturaActual?.id_lote);
     const totalPagos = pagosLote.reduce((sum, p) => sum + p.monto, 0);
     if (pagosLote.length > 0) {
@@ -455,15 +455,13 @@ export default function CajaPage() {
         startY: afterTotalesY + 3,
         head: [["ID", "Fecha", "Cliente", "Cuenta Tesorería", "Monto"]],
         body: pagosLote.map(pago => {
-          // Los pagos de cuenta corriente no tienen fk_id_cuenta_tesoreria, mostrar "-"
-          let clienteNombre = "-";
-          const cuentaCorriente = clientesArr.find(c => c.id === pago.fk_id_cuenta_corriente);
-          if (cuentaCorriente) clienteNombre = cuentaCorriente.razon_social || "-";
+          const clienteNombre = pago.cuenta_corriente?.cliente?.razon_social || "-";
+          const cuentaTesoreria = pago.cuenta_tesoreria?.descripcion || "-";
           return [
             pago.id.toString(),
             new Date(pago.creado_el).toLocaleString(),
             clienteNombre,
-            "-", // No hay cuenta de tesorería asociada en pagos de cuenta corriente
+            cuentaTesoreria,
             formatCurrency(pago.monto, DEFAULT_CURRENCY, DEFAULT_LOCALE)
           ];
         }),
