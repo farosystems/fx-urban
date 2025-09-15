@@ -75,7 +75,7 @@ export function AppSidebar() {
   const isStockActive = ["/articles", "/movimientos-stock", "/stock-faltante"].includes(pathname);
   const isContactosActive = ["/clientes", "/usuarios"].includes(pathname);
   const isVentasActive = ["/ventas"].includes(pathname);
-  const isTesoreriaActive = ["/caja", "/gastos-empleados"].includes(pathname);
+  const isTesoreriaActive = ["/caja", "/gastos-empleados", "/deudas", "/pagos-deudas"].includes(pathname);
   const isSueldosActive = ["/liquidaciones", "/empleados"].includes(pathname);
 
   const isImportacionesActive = ["/importacion-stock"].includes(pathname);
@@ -494,7 +494,7 @@ export function AppSidebar() {
             </li>
           )}
           {/* Menú Tesorería desplegable */}
-          {(isModuloPermitido('caja') || isModuloPermitido('gastos-empleados')) && (
+          {(isModuloPermitido('caja') || isModuloPermitido('gastos-empleados') || isModuloPermitido('deudas') || isModuloPermitido('pagos-deudas')) && (
             <li>
               <button
                 type="button"
@@ -528,6 +528,30 @@ export function AppSidebar() {
                       >
                         <IconCash className="w-4 h-4" />
                         <span>Gastos de mi Comercio</span>
+                      </Link>
+                    </li>
+                  )}
+                  {isModuloPermitido('deudas') && (
+                    <li className={`${pathname === "/deudas" ? "border-l-4 border-blue-600 bg-blue-50" : ""} pl-2`}>
+                      <Link
+                        href="/deudas"
+                        className={`flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${pathname === "/deudas" ? "text-blue-800 font-semibold" : "hover:bg-gray-100 text-black"}`}
+                        prefetch={false}
+                      >
+                        <IconReceipt className="w-4 h-4" />
+                        <span>Deudas</span>
+                      </Link>
+                    </li>
+                  )}
+                  {isModuloPermitido('pagos-deudas') && (
+                    <li className={`${pathname === "/pagos-deudas" ? "border-l-4 border-blue-600 bg-blue-50" : ""} pl-2`}>
+                      <Link
+                        href="/pagos-deudas"
+                        className={`flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${pathname === "/pagos-deudas" ? "text-blue-800 font-semibold" : "hover:bg-gray-100 text-black"}`}
+                        prefetch={false}
+                      >
+                        <IconCash className="w-4 h-4" />
+                        <span>Pagos de Deudas</span>
                       </Link>
                     </li>
                   )}

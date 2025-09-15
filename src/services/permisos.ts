@@ -130,26 +130,87 @@ export async function updatePermisosUsuarioLote(usuarioId: number, permisos: { [
   const updates = Object.entries(permisos).map(([moduloId, permiso]) => {
     const moduloIdNum = parseInt(moduloId);
     const permisoExistente = permisosExistentesMap.get(moduloIdNum);
-    
-    return {
-      id: permisoExistente?.id, // Incluir ID si existe para actualizar
+
+    const updateData: {
+      fk_id_usuario: number;
+      fk_id_modulo: number;
+      puede_ver: boolean;
+      actualizado_el: string;
+      id?: number;
+    } = {
       fk_id_usuario: usuarioId,
       fk_id_modulo: moduloIdNum,
-      ...permiso,
+      puede_ver: permiso.puede_ver ?? false,
       actualizado_el: new Date().toISOString()
     };
+
+    // Solo incluir ID si existe (para updates), no para inserts
+    if (permisoExistente?.id) {
+      updateData.id = permisoExistente.id;
+    }
+
+    return updateData;
   });
 
-  const { error } = await supabase
-    .from("permisos_usuarios")
-    .upsert(updates, { 
-      onConflict: 'fk_id_usuario,fk_id_modulo',
-      ignoreDuplicates: false 
+  // Separar inserts de updates para evitar problemas con GENERATED ALWAYS AS IDENTITY
+  const insertsData = updates
+    .filter(update => !update.id)
+    .map((update) => {
+      // Extraer el id y quedarse con el resto
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { id, ...rest } = update;
+      // Limpiar campos undefined
+      const cleanData: Record<string, any> = {};
+      Object.keys(rest).forEach(key => {
+        if (rest[key as keyof typeof rest] !== undefined) {
+          cleanData[key] = rest[key as keyof typeof rest];
+        }
+      });
+      return cleanData;
     });
 
-  if (error) {
-    console.error("Error actualizando permisos en lote:", error);
-    throw error;
+  const updatesData = updates
+    .filter(update => update.id)
+    .map(update => {
+      // Limpiar campos undefined
+      const cleanData: Record<string, any> = {};
+      Object.keys(update).forEach(key => {
+        if (update[key as keyof typeof update] !== undefined) {
+          cleanData[key] = update[key as keyof typeof update];
+        }
+      });
+      return cleanData;
+    });
+
+  // Realizar inserts para nuevos registros
+  if (insertsData.length > 0) {
+    console.log("Insertando nuevos permisos:", insertsData);
+    const { error: insertError } = await supabase
+      .from("permisos_usuarios")
+      .insert(insertsData);
+
+    if (insertError) {
+      console.error("Error insertando nuevos permisos:", insertError);
+      console.error("Datos que causaron el error:", insertsData);
+      throw insertError;
+    }
+  }
+
+  // Realizar updates para registros existentes uno por uno
+  for (const updateData of updatesData) {
+    const { id, ...updateFields } = updateData;
+    console.log(`Actualizando permiso ID ${id}:`, updateFields);
+
+    const { error: updateError } = await supabase
+      .from("permisos_usuarios")
+      .update(updateFields)
+      .eq("id", id);
+
+    if (updateError) {
+      console.error("Error actualizando permiso existente:", updateError);
+      console.error("Datos que causaron el error:", { id, updateFields });
+      throw updateError;
+    }
   }
 }
 
@@ -260,7 +321,7 @@ function getPuedeVerPorRol(rol: string, nombreModulo: string): boolean {
     case 'admin':
       return true; // Solo los administradores ven todo por defecto
     case 'supervisor':
-      return ['dashboard', 'articulos', 'clientes', 'ventas', 'mis-ventas', 'movimientos-stock', 'importacion-stock', 'stock-faltante', 'talles-colores', 'variantes-productos', 'agrupadores', 'empleados', 'liquidaciones', 'caja', 'gastos-empleados', 'pagos', 'cuentas-corrientes', 'informes'].includes(nombreModulo);
+      return ['dashboard', 'articulos', 'clientes', 'ventas', 'mis-ventas', 'movimientos-stock', 'importacion-stock', 'stock-faltante', 'talles-colores', 'variantes-productos', 'agrupadores', 'empleados', 'liquidaciones', 'caja', 'gastos-empleados', 'deudas', 'pagos-deudas', 'pagos', 'cuentas-corrientes', 'informes'].includes(nombreModulo);
     case 'vendedor':
       return ['dashboard', 'articulos', 'clientes', 'ventas', 'mis-ventas', 'movimientos-stock', 'importacion-stock', 'stock-faltante', 'talles-colores', 'variantes-productos', 'agrupadores', 'informes'].includes(nombreModulo);
     case 'cobrador':
