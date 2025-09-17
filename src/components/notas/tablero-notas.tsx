@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, forwardRef, useImperativeHandle } from "react";
 import { Postit } from "./postit";
 import { Nota } from "@/types/nota";
 import { getNotasPorUsuario } from "@/services/notas";
@@ -13,21 +13,32 @@ interface TableroNotasProps {
   onNotasChange: (notas: Nota[]) => void;
 }
 
-export function TableroNotas({ usuarioId, onCrearNota, notas, onNotasChange }: TableroNotasProps) {
+export interface TableroNotasRef {
+  refreshNotas: () => void;
+}
+
+export const TableroNotas = forwardRef<TableroNotasRef, TableroNotasProps>(({ usuarioId, onCrearNota, notas, onNotasChange }, ref) => {
   const [isLoading, setIsLoading] = useState(true);
   const [showGrid, setShowGrid] = useState(false);
 
   const fetchNotas = async () => {
     try {
       setIsLoading(true);
+      console.log("🚀 TableroNotas: Buscando notas para usuarioId:", usuarioId);
       const data = await getNotasPorUsuario(usuarioId);
+      console.log("📊 TableroNotas: Notas recibidas:", data);
       onNotasChange(data);
     } catch (error) {
-      console.error("Error fetching notas:", error);
+      console.error("❌ TableroNotas: Error fetching notas:", error);
     } finally {
       setIsLoading(false);
     }
   };
+
+  // Exponer la función fetchNotas a través del ref
+  useImperativeHandle(ref, () => ({
+    refreshNotas: fetchNotas
+  }));
 
   useEffect(() => {
     if (usuarioId) {
@@ -97,8 +108,8 @@ export function TableroNotas({ usuarioId, onCrearNota, notas, onNotasChange }: T
         className="relative border-2 border-dashed border-gray-300 rounded-lg overflow-hidden bg-gradient-to-br from-gray-50 to-gray-100"
         style={{
           width: '100%',
-          height: '80vh',
-          minHeight: '600px'
+          height: '95vh',
+          minHeight: '1000px'
         }}
       >
         {/* Grid de fondo (opcional) */}
@@ -158,4 +169,6 @@ export function TableroNotas({ usuarioId, onCrearNota, notas, onNotasChange }: T
       </div>
     </div>
   );
-}
+});
+
+TableroNotas.displayName = "TableroNotas";

@@ -144,10 +144,16 @@ export function calcularPosicionDisponible(notasExistentes: Nota[], anchoTablero
   const ANCHO_POSTIT = 200;
   const ALTO_POSTIT = 200;
 
+  // Validar que notasExistentes esté definido y sea un array
+  const notas = notasExistentes || [];
+
   for (let y = MARGEN; y < 800; y += ALTO_POSTIT + MARGEN) {
     for (let x = MARGEN; x < anchoTablero - ANCHO_POSTIT; x += ANCHO_POSTIT + MARGEN) {
       // Verificar si esta posición está ocupada
-      const ocupada = notasExistentes.some(nota =>
+      const ocupada = notas.some(nota =>
+        nota &&
+        typeof nota.posicion_x === 'number' &&
+        typeof nota.posicion_y === 'number' &&
         Math.abs(nota.posicion_x - x) < ANCHO_POSTIT / 2 &&
         Math.abs(nota.posicion_y - y) < ALTO_POSTIT / 2
       );
