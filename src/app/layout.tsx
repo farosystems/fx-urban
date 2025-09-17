@@ -3,6 +3,7 @@ import { ClerkProvider } from "@clerk/nextjs";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { ColorProvider } from "@/contexts/ColorContext";
 import { RouteGuard } from "@/components/route-guard";
+import { Toaster } from "sonner";
 import "./globals.css";
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -23,6 +24,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                     Los derechos de política y privacidad son de FaroAi
                   </footer>
                 </div>
+                <Toaster
+                  position="top-right"
+                  theme="light"
+                  richColors
+                  closeButton
+                  duration={5000}
+                />
               </RouteGuard>
             </SidebarProvider>
           </ColorProvider>

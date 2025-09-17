@@ -34,4 +34,24 @@ export async function updateUsuario(id: number, usuario: Partial<CreateUsuarioDa
 export async function deleteUsuario(id: number) {
   const { error } = await supabase.from("usuarios").delete().eq("id", id);
   if (error) throw error;
+}
+
+export async function getUsuarioPorEmail(email: string): Promise<Usuario | null> {
+  try {
+    const { data, error } = await supabase
+      .from("usuarios")
+      .select("*")
+      .eq("email", email)
+      .single();
+
+    if (error) {
+      console.error("Error obteniendo usuario por email:", error);
+      return null;
+    }
+
+    return data as Usuario;
+  } catch (error) {
+    console.error("Error en getUsuarioPorEmail:", error);
+    return null;
+  }
 } 

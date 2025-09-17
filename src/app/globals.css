@@ -1,6 +1,89 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/* FullCalendar styles */
+.fc-theme-standard .fc-scrollgrid {
+  border-color: #e5e7eb;
+}
+
+.fc .fc-button {
+  background-color: #3b82f6;
+  border-color: #3b82f6;
+}
+
+.fc .fc-button:hover {
+  background-color: #2563eb;
+  border-color: #2563eb;
+}
+
+.fc .fc-button:focus {
+  box-shadow: 0 0 0 2px #93c5fd;
+}
+
+.fc-event {
+  border-radius: 4px;
+  font-size: 0.875rem;
+}
+
+.fc-daygrid-event {
+  margin: 1px;
+}
+
+.fc-today {
+  background-color: #fef3c7 !important;
+}
+
+.fc .fc-toolbar-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.fc .fc-col-header-cell {
+  font-weight: 600;
+  background-color: #f8fafc;
+}
+
+/* Estilos para notificaciones de recordatorio */
+.reminder-toast {
+  background-color: #ffffff !important;
+  border-left: 4px solid currentColor;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+.reminder-toast .sonner-toast-description {
+  color: #6b7280;
+  font-size: 0.875rem;
+}
+
+.reminder-toast .sonner-action {
+  background-color: #3b82f6;
+  color: white;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.reminder-toast .sonner-action:hover {
+  background-color: #2563eb;
+}
+
+/* Animación especial para recordatorios */
+@keyframes reminderPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.reminder-toast {
+  animation: reminderPulse 0.5s ease-in-out 3;
+}
+
+/* Modo oscuro para recordatorios */
+.dark .reminder-toast {
+  background-color: #1f2937 !important;
+  color: #f9fafb !important;
+}
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {

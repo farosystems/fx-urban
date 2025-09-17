@@ -12,6 +12,11 @@ import { procesarPagoDeuda } from "@/services/pagosDeudas";
 import { ProcesarPagoData } from "@/types/pagoDeuda";
 import { DeudaForm } from "./deuda-form";
 import { PagoDeudaModal } from "./pago-deuda-modal";
+import { PagoDeudaInternaModal, PagoDeudaInternaData } from "./pago-deuda-interna-modal";
+import { procesarPagoDeudaInterna } from "@/services/pagosDeudas";
+import { useUser } from "@clerk/nextjs";
+import { getUsuarioPorEmail } from "@/services/usuarios";
+import { Usuario } from "@/types/usuario";
 
 interface DeudasTableProps {
   data: DeudaConCliente[];
@@ -21,8 +26,10 @@ interface DeudasTableProps {
 const PAGE_SIZE = 10;
 
 export function DeudasTable({ data, onDeudaUpdated }: DeudasTableProps) {
+  const { user } = useUser();
   const [search, setSearch] = React.useState("");
   const [page, setPage] = React.useState(1);
+  const [usuarioActual, setUsuarioActual] = React.useState<Usuario | null>(null);
 
   const formatDateSafe = (dateString: string | null) => {
     if (!dateString) return "";
@@ -46,8 +53,20 @@ export function DeudasTable({ data, onDeudaUpdated }: DeudasTableProps) {
   const [selectedDeuda, setSelectedDeuda] = React.useState<DeudaConCliente | null>(null);
   const [editingDeuda, setEditingDeuda] = React.useState<DeudaConCliente | null>(null);
   const [pagoDeuda, setPagoDeuda] = React.useState<DeudaConCliente | null>(null);
+  const [pagoDeudaInterna, setPagoDeudaInterna] = React.useState<DeudaConCliente | null>(null);
   const [isLoading, setIsLoading] = React.useState(false);
   const [toast, setToast] = React.useState<{ show: boolean, message: string, type: 'success' | 'error' }>({ show: false, message: "", type: 'success' });
+
+  // Obtener usuario actual
+  React.useEffect(() => {
+    async function fetchUsuario() {
+      if (user?.emailAddresses?.[0]?.emailAddress) {
+        const usuario = await getUsuarioPorEmail(user.emailAddresses[0].emailAddress);
+        setUsuarioActual(usuario);
+      }
+    }
+    fetchUsuario();
+  }, [user]);
 
   function showToast(message: string, type: 'success' | 'error' = 'success') {
     console.log('🍞 Toast:', message);
@@ -107,6 +126,21 @@ export function DeudasTable({ data, onDeudaUpdated }: DeudasTableProps) {
     } catch (error: any) {
       console.error('Error processing payment:', error);
       showToast(error.message || 'Error al procesar el pago', 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleProcesarPagoInterna = async (pagoData: PagoDeudaInternaData) => {
+    try {
+      setIsLoading(true);
+      await procesarPagoDeudaInterna(pagoData);
+      showToast('Pago de deuda interna procesado exitosamente', 'success');
+      setPagoDeudaInterna(null);
+      onDeudaUpdated();
+    } catch (error: any) {
+      console.error('Error processing internal debt payment:', error);
+      showToast(error.message || 'Error al procesar el pago de deuda interna', 'error');
     } finally {
       setIsLoading(false);
     }
@@ -222,11 +256,17 @@ export function DeudasTable({ data, onDeudaUpdated }: DeudasTableProps) {
                         <Button size="icon" variant="outline" onClick={() => setEditingDeuda(deuda)} title="Editar deuda">
                           <Edit className="w-4 h-4" />
                         </Button>
-                        {deuda.tipo === 'externa' && deuda.saldo > 0 && (
+                        {deuda.saldo > 0 && (
                           <Button
                             size="icon"
                             variant="outline"
-                            onClick={() => setPagoDeuda(deuda)}
+                            onClick={() => {
+                              if (deuda.tipo === 'externa') {
+                                setPagoDeuda(deuda);
+                              } else {
+                                setPagoDeudaInterna(deuda);
+                              }
+                            }}
                             title="Procesar pago"
                             className="hover:bg-green-50 hover:border-green-200"
                           >
@@ -410,13 +450,23 @@ export function DeudasTable({ data, onDeudaUpdated }: DeudasTableProps) {
         </DialogContent>
       </Dialog>
 
-      {/* Modal de pago */}
+      {/* Modal de pago deuda externa */}
       <PagoDeudaModal
         deuda={pagoDeuda}
         isOpen={!!pagoDeuda}
         onClose={() => setPagoDeuda(null)}
         onPagoRealizado={handleProcesarPago}
         isLoading={isLoading}
+      />
+
+      {/* Modal de pago deuda interna */}
+      <PagoDeudaInternaModal
+        deuda={pagoDeudaInterna}
+        isOpen={!!pagoDeudaInterna}
+        onClose={() => setPagoDeudaInterna(null)}
+        onPagoRealizado={handleProcesarPagoInterna}
+        isLoading={isLoading}
+        usuarioId={usuarioActual?.id}
       />
 
       {/* Toast notifications */}

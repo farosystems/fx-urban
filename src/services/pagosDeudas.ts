@@ -2,6 +2,8 @@ import { supabase } from "@/lib/supabaseClient";
 import { PagoDeuda, PagoDeudaConDetalles, CreatePagoDeudaData, ProcesarPagoData } from "@/types/pagoDeuda";
 import { createDetalleLoteOperacion } from "@/services/detalleLotesOperaciones";
 import { getLoteAbierto } from "@/services/lotesOperaciones";
+import { createGastoEmpleado } from "@/services/gastosEmpleados";
+import { CreateGastoEmpleadoData } from "@/types/gastoEmpleado";
 
 export async function getPagosDeudas(): Promise<PagoDeudaConDetalles[]> {
   const { data, error } = await supabase
@@ -166,4 +168,94 @@ export async function getTotalPagadoDeuda(deudaId: number): Promise<number> {
   if (error) throw error;
 
   return data.reduce((total, pago) => total + (pago.monto || 0), 0);
+}
+
+export interface ProcesarPagoDeudaInternaData {
+  deudaId: number;
+  monto: number;
+  cuentaTesoreriaId: number;
+  tipoGastoId: number;
+  fechaPago: string;
+  descripcion: string;
+  usuarioId: number;
+}
+
+export async function procesarPagoDeudaInterna(datosPago: ProcesarPagoDeudaInternaData): Promise<void> {
+  const { deudaId, monto, cuentaTesoreriaId, tipoGastoId, fechaPago, descripcion, usuarioId } = datosPago;
+
+  // 1. Obtener la deuda actual
+  const { data: deudaActual, error: errorDeuda } = await supabase
+    .from("deudas")
+    .select("id, saldo, total, tipo")
+    .eq("id", deudaId)
+    .single();
+
+  if (errorDeuda) {
+    console.error("Error obteniendo deuda:", errorDeuda);
+    throw new Error("No se pudo obtener la información de la deuda");
+  }
+
+  if (!deudaActual) {
+    throw new Error("La deuda no existe");
+  }
+
+  if (deudaActual.tipo !== "interna") {
+    throw new Error("Solo se pueden procesar pagos para deudas internas usando esta función");
+  }
+
+  if (monto <= 0) {
+    throw new Error("El monto del pago debe ser mayor a 0");
+  }
+
+  if (monto > deudaActual.saldo) {
+    throw new Error("El monto del pago no puede ser mayor al saldo pendiente");
+  }
+
+  // 2. Obtener el lote activo
+  const loteActivo = await getLoteAbierto();
+  if (!loteActivo) {
+    throw new Error("No hay un lote de operaciones abierto. Debe abrir caja antes de procesar pagos.");
+  }
+
+  // 3. Crear el registro de gasto en gastos_empleados
+  const gastoData: CreateGastoEmpleadoData = {
+    fecha_gasto: fechaPago,
+    fk_tipo_gasto: tipoGastoId,
+    monto: monto,
+    descripcion: descripcion,
+    fk_empleado: null, // Para deudas internas no hay empleado asociado
+    fk_lote_operaciones: loteActivo,
+    fk_usuario: usuarioId,
+    fk_cuenta_tesoreria: cuentaTesoreriaId
+  };
+
+  await createGastoEmpleado(gastoData);
+
+  // 4. Registrar el egreso en detalle_lotes_operaciones
+  try {
+    await createDetalleLoteOperacion({
+      fk_id_lote: loteActivo,
+      fk_id_cuenta_tesoreria: cuentaTesoreriaId,
+      tipo: "egreso",
+      monto: monto
+    });
+  } catch (error) {
+    console.error("Error registrando movimiento de caja:", error);
+    throw new Error("No se pudo registrar el movimiento en el lote de operaciones");
+  }
+
+  // 5. Actualizar el saldo de la deuda
+  const nuevoSaldo = deudaActual.saldo - monto;
+
+  const { error: errorUpdate } = await supabase
+    .from("deudas")
+    .update({
+      saldo: Math.max(0, nuevoSaldo) // No permitir saldo negativo
+    })
+    .eq("id", deudaId);
+
+  if (errorUpdate) {
+    console.error("Error actualizando deuda:", errorUpdate);
+    throw new Error("No se pudo actualizar el saldo de la deuda");
+  }
 }

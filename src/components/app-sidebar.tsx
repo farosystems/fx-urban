@@ -15,7 +15,7 @@ import {
   IconShield,
   IconChartBar,
 } from "@tabler/icons-react";
-import { Shield } from "lucide-react";
+import { Shield, StickyNote, Calendar } from "lucide-react";
 import Link from "next/link";
 import { UserButton } from "@clerk/nextjs";
 import { useUser } from "@clerk/nextjs";
@@ -62,6 +62,7 @@ export function AppSidebar() {
 
   const [importacionesOpen, setImportacionesOpen] = React.useState(false);
   const [seguridadOpen, setSeguridadOpen] = React.useState(false);
+  const [personalOpen, setPersonalOpen] = React.useState(false);
   const [config, setConfig] = React.useState<ConfiguracionEmpresa | null>(null);
   const [modalOpen, setModalOpen] = React.useState(false);
   const [nombreEmpresa, setNombreEmpresa] = React.useState("");
@@ -80,6 +81,7 @@ export function AppSidebar() {
 
   const isImportacionesActive = ["/importacion-stock"].includes(pathname);
   const isSeguridadActive = ["/seguridad", "/seguridad/modulos"].includes(pathname);
+  const isPersonalActive = ["/notas", "/agenda"].includes(pathname);
 
   // Función para verificar si un módulo está permitido
   const isModuloPermitido = (nombreModulo: string): boolean => {
@@ -626,6 +628,49 @@ export function AppSidebar() {
                       <span>Importar Stock</span>
                     </Link>
                   </li>
+                </ul>
+              )}
+            </li>
+          )}
+
+          {/* Menú Personal desplegable */}
+          {(isModuloPermitido('notas') || isModuloPermitido('agenda')) && (
+            <li>
+              <button
+                type="button"
+                className={`flex items-center gap-3 px-4 py-2 rounded hover:bg-gray-100 transition-colors w-full focus:outline-none ${isPersonalActive ? "text-blue-600" : "text-gray-800"}`}
+                onClick={() => setPersonalOpen((v) => !v)}
+              >
+                <StickyNote className={`w-5 h-5 ${isPersonalActive ? "text-blue-600" : ""}`} />
+                <span className="font-medium">Personal</span>
+                <svg className={`ml-auto w-4 h-4 transition-transform ${personalOpen ? "rotate-90" : "rotate-0"}`} viewBox="0 0 20 20" fill="none"><path d="M6 8l4 4 4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              </button>
+              {personalOpen && (
+                <ul className="ml-8 mt-1 flex flex-col gap-1">
+                  {isModuloPermitido('notas') && (
+                    <li className={`${pathname === "/notas" ? "border-l-4 border-blue-600 bg-blue-50" : ""} pl-2`}>
+                      <Link
+                        href="/notas"
+                        className={`flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${pathname === "/notas" ? "text-blue-800 font-semibold" : "hover:bg-gray-100 text-black"}`}
+                        prefetch={false}
+                      >
+                        <StickyNote className="w-4 h-4" />
+                        <span>Notas</span>
+                      </Link>
+                    </li>
+                  )}
+                  {isModuloPermitido('agenda') && (
+                    <li className={`${pathname === "/agenda" ? "border-l-4 border-blue-600 bg-blue-50" : ""} pl-2`}>
+                      <Link
+                        href="/agenda"
+                        className={`flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${pathname === "/agenda" ? "text-blue-800 font-semibold" : "hover:bg-gray-100 text-black"}`}
+                        prefetch={false}
+                      >
+                        <Calendar className="w-4 h-4" />
+                        <span>Agenda</span>
+                      </Link>
+                    </li>
+                  )}
                 </ul>
               )}
             </li>
