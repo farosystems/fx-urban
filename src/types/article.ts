@@ -10,6 +10,7 @@ export interface Article {
   marca_nombre?: string;
   mark_up?: number;
   precio_costo?: number;
+  requiere_detalle?: boolean;
 }
 
 export interface CreateArticleData {
@@ -21,6 +22,7 @@ export interface CreateArticleData {
   stock: number;
   mark_up?: number;
   precio_costo?: number;
+  requiere_detalle?: boolean;
 }
 
 export interface UpdateArticleData {
@@ -32,4 +34,5 @@ export interface UpdateArticleData {
   stock?: number;
   mark_up?: number;
   precio_costo?: number;
+  requiere_detalle?: boolean;
 } 

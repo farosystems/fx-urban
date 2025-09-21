@@ -30,6 +30,7 @@ const articleSchema = z.object({
   activo: z.boolean(),
   mark_up: z.union([z.string(), z.number()]).transform(val => val === '' ? 0 : Number(val)).refine(val => !isNaN(val) && val >= 0, { message: "El mark up debe ser mayor o igual a 0" }).optional(),
   precio_costo: z.union([z.string(), z.number()]).transform(val => val === '' ? 0 : Number(val)).refine(val => !isNaN(val) && val >= 0, { message: "El precio de costo debe ser mayor o igual a 0" }).optional(),
+  requiere_detalle: z.boolean().optional(),
 });
 
 // type ArticleFormValues = z.infer<typeof articleSchema>;
@@ -55,6 +56,7 @@ export function ArticleForm({ article, onSave, onCancel, isLoading = false }: Ar
       activo: article?.activo ?? true,
       mark_up: article?.mark_up ?? 0,
       precio_costo: article?.precio_costo ?? 0,
+      requiere_detalle: article?.requiere_detalle ?? true,
     },
   });
 
@@ -66,12 +68,17 @@ export function ArticleForm({ article, onSave, onCancel, isLoading = false }: Ar
   const handleSubmit = async (values: Record<string, unknown>) => {
     const expired = await checkTrial(() => setShowTrialEnded(true));
     if (expired) return;
+
+    // Extraer requiere_detalle del objeto antes de enviarlo
+    const { requiere_detalle, ...articleData } = values;
+
     onSave({
-      ...values,
+      ...articleData,
       precio_unitario: Number(values.precio_unitario),
       fk_id_agrupador: Number(values.fk_id_agrupador),
       mark_up: Number(values.mark_up),
       precio_costo: Number(values.precio_costo),
+      requiere_detalle: Boolean(requiere_detalle),
     });
   };
 
@@ -231,6 +238,20 @@ export function ArticleForm({ article, onSave, onCancel, isLoading = false }: Ar
                     <input type="checkbox" checked={field.value} onChange={e => field.onChange(e.target.checked)} />
                   </FormControl>
                   <FormDescription>¿El artículo está activo?</FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="requiere_detalle"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Requiere Variante</FormLabel>
+                  <FormControl>
+                    <input type="checkbox" checked={field.value} onChange={e => field.onChange(e.target.checked)} />
+                  </FormControl>
+                  <FormDescription>Si está marcado, debes crear manualmente las variantes. Si no, se creará automáticamente una variante estándar.</FormDescription>
                   <FormMessage />
                 </FormItem>
               )}

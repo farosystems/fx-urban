@@ -94,37 +94,61 @@ export async function getArticles(): Promise<Article[]> {
 export async function createArticle(article: CreateArticleData): Promise<Article> {
   try {
     const usuario = await checkUserPermissions();
-    
+
     // Verificar permisos específicos para crear artículos
     if (usuario.rol !== 'admin' && usuario.rol !== 'supervisor') {
       throw new Error('No tienes permisos para crear artículos. Solo administradores y supervisores pueden crear artículos.');
     }
-    
+
     // Validaciones básicas
     if (!article.descripcion?.trim()) {
       throw new Error('La descripción del artículo es requerida');
     }
-    
+
     if (!article.precio_unitario || article.precio_unitario <= 0) {
       throw new Error('El precio unitario debe ser mayor a 0');
     }
-    
+
     if (!article.fk_id_agrupador) {
       throw new Error('El agrupador es requerido');
     }
-    
+
+    // Extraer requiere_detalle antes de insertar en la base de datos
+    const { requiere_detalle, ...articleDataForDB } = article;
+
     const { data, error } = await supabase
       .from("articulos")
-      .insert([article])
+      .insert([articleDataForDB])
       .select()
       .single();
-      
+
     if (error) {
       console.error('Error en createArticle:', error);
       throw new Error('Error al crear artículo: ' + error.message);
     }
-    
-    return data as Article;
+
+    const createdArticle = data as Article;
+
+    // Si requiere_detalle es false, crear automáticamente una variante con talle_id=8, color_id=10 y stock=1
+    if (requiere_detalle === false) {
+      try {
+        await supabase
+          .from("variantes_articulos")
+          .insert([{
+            fk_id_articulo: createdArticle.id,
+            fk_id_talle: 8,
+            fk_id_color: 10,
+            stock_unitario: 1,
+            stock_minimo: 1,
+            stock_maximo: 1
+          }]);
+      } catch (varianteError) {
+        console.error('Error al crear variante automática:', varianteError);
+        // No fallar la creación del artículo si hay error en la variante
+      }
+    }
+
+    return createdArticle;
   } catch (error) {
     console.error('Error en createArticle:', error);
     throw new Error('Error al crear artículo: ' + (error instanceof Error ? error.message : 'Error desconocido'));
