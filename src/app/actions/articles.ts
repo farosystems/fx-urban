@@ -4,6 +4,23 @@ import { auth } from '@clerk/nextjs/server';
 import { createClient } from '@supabase/supabase-js';
 import { Article, CreateArticleData, UpdateArticleData } from '@/types/article';
 
+// Interfaces para evitar usar 'any'
+interface Marca {
+  id: number;
+  descripcion: string;
+}
+
+interface Agrupador {
+  id: number;
+  nombre: string;
+}
+
+interface ArticleRow {
+  fk_id_marca?: number;
+  fk_id_agrupador?: number;
+  [key: string]: unknown;
+}
+
 // Verificar que las variables de entorno estén disponibles
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -74,9 +91,9 @@ export async function getArticles(): Promise<Article[]> {
     const { data: agrupadores } = await supabase.from("agrupadores").select("id, nombre");
 
     // Mapear nombres/descripciones de foráneas
-    const mapped = (data as unknown[]).map(a => {
-      const marca = marcas?.find((m: any) => m.id === (a as any).fk_id_marca);
-      const agrupador = agrupadores?.find((g: any) => g.id === (a as any).fk_id_agrupador);
+    const mapped = (data as ArticleRow[]).map(a => {
+      const marca = (marcas as Marca[])?.find((m: Marca) => m.id === a.fk_id_marca);
+      const agrupador = (agrupadores as Agrupador[])?.find((g: Agrupador) => g.id === a.fk_id_agrupador);
       return {
         ...(a as Record<string, unknown>),
         marca_nombre: marca?.descripcion || '-',
@@ -158,15 +175,19 @@ export async function createArticle(article: CreateArticleData): Promise<Article
 export async function updateArticle(id: number, article: UpdateArticleData): Promise<Article> {
   try {
     const usuario = await checkUserPermissions();
-    
+
     // Verificar permisos específicos para actualizar artículos
     if (usuario.rol !== 'admin' && usuario.rol !== 'supervisor') {
       throw new Error('No tienes permisos para actualizar artículos. Solo administradores y supervisores pueden actualizar artículos.');
     }
-    
+
+    // Extraer requiere_detalle antes de actualizar en la base de datos
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { requiere_detalle, ...articleDataForDB } = article;
+
     const { data, error } = await supabase
       .from("articulos")
-      .update(article)
+      .update(articleDataForDB)
       .eq("id", id)
       .select()
       .single();
@@ -227,8 +248,8 @@ export async function getArticleById(id: number): Promise<Article | null> {
     const { data: marcas } = await supabase.from("marcas").select("id, descripcion");
     const { data: agrupadores } = await supabase.from("agrupadores").select("id, nombre");
     
-    const marca = marcas?.find((m: any) => m.id === (data as any).fk_id_marca);
-    const agrupador = agrupadores?.find((g: any) => g.id === (data as any).fk_id_agrupador);
+    const marca = (marcas as Marca[])?.find((m: Marca) => m.id === (data as ArticleRow).fk_id_marca);
+    const agrupador = (agrupadores as Agrupador[])?.find((g: Agrupador) => g.id === (data as ArticleRow).fk_id_agrupador);
     
     return {
       ...data,

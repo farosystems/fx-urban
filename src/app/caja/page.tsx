@@ -127,7 +127,7 @@ export default function CajaPage() {
         if (actual) fetchCajaAbierta(actual.id);
       }
     });
-  }, [user]);
+  }, [user, fetchCajaAbierta]);
 
   // Al cargar usuarios, si es supervisor y no hay usuario seleccionado, seleccionar el primero y mostrar su caja abierta
   React.useEffect(() => {
@@ -135,14 +135,14 @@ export default function CajaPage() {
       setUsuarioSeleccionado(usuarios[0].id.toString());
       fetchCajaAbierta(Number(usuarios[0].id));
     }
-  }, [usuarioDB, usuarios, usuarioSeleccionado]);
+  }, [usuarioDB, usuarios, usuarioSeleccionado, fetchCajaAbierta]);
 
   // Refrescar caja abierta al cambiar usuarioSeleccionado si es supervisor
   React.useEffect(() => {
     if (usuarioDB?.rol === "supervisor" && usuarioSeleccionado) {
       fetchCajaAbierta(Number(usuarioSeleccionado));
     }
-  }, [usuarioSeleccionado, usuarioDB]);
+  }, [usuarioSeleccionado, usuarioDB, fetchCajaAbierta]);
 
   // Estado para el lote abierto global (para supervisor)
   const [loteAbiertoGlobal, setLoteAbiertoGlobal] = useState<LoteOperacion | null>(null);
@@ -300,15 +300,24 @@ export default function CajaPage() {
     setLoadingMessage("Cerrando caja y calculando movimientos...");
     const loteACerrar = loteAbiertoGlobal || (aperturaActual && aperturaActual.id_lote ? { id_lote: aperturaActual.id_lote } : null);
     if (!loteACerrar || !loteACerrar.id_lote) return;
+
     // Traer todos los movimientos reales del lote
     const movimientos = await getDetalleLotesOperaciones(loteACerrar.id_lote);
+
+    // Traer todas las ventas del lote para incluir en el cálculo
+    const ventas = await getOrdenesVenta();
+    const ventasLote = ventas.filter(v => v.fk_id_lote === loteACerrar.id_lote);
+
     // Traer todas las cuentas de tesorería
     const cuentasTesoreria = await getCuentasTesoreria();
-    // Sumar ingresos y egresos por cuenta SOLO de movimientos
+
+    // Sumar ingresos y egresos por cuenta INCLUYENDO movimientos + ventas
     const resumenPorCuenta: Record<number, { cuenta: string, ingresos: number, egresos: number }> = {};
     for (const cuenta of cuentasTesoreria) {
       resumenPorCuenta[cuenta.id] = { cuenta: cuenta.descripcion, ingresos: 0, egresos: 0 };
     }
+
+    // Procesar movimientos del lote
     for (const mov of movimientos) {
       if (resumenPorCuenta[mov.fk_id_cuenta_tesoreria]) {
         if (mov.tipo === 'ingreso') {
@@ -318,6 +327,24 @@ export default function CajaPage() {
         }
       }
     }
+
+    // Procesar ventas del lote
+    const mediosPorVenta = await Promise.all(
+      ventasLote.map(venta => getOrdenesVentaMediosPago(venta.id))
+    );
+    ventasLote.forEach((venta, i) => {
+      const medios = mediosPorVenta[i];
+      for (const m of medios) {
+        if (resumenPorCuenta[m.fk_id_cuenta_tesoreria]) {
+          if (venta.fk_id_tipo_comprobante === 2) { // Nota de crédito
+            resumenPorCuenta[m.fk_id_cuenta_tesoreria].egresos += m.monto_pagado;
+          } else {
+            resumenPorCuenta[m.fk_id_cuenta_tesoreria].ingresos += m.monto_pagado;
+          }
+        }
+      }
+    });
+
     const resumenFinal = Object.values(resumenPorCuenta);
     setResumen(resumenFinal);
     setShowCierreModal(true);
@@ -756,10 +783,6 @@ export default function CajaPage() {
     setTimeout(() => setToast({ show: false, message: "" }), 2500);
   }
 
-  // Calcular el total de ingresos sin cuenta corriente para el modal de cierre
-  const totalIngresosSinCuentaCorriente = resumen
-    .filter(r => r.cuenta.toUpperCase() !== "CUENTA CORRIENTE")
-    .reduce((sum, r) => sum + r.ingresos, 0);
 
   // Definir totalEgresosSinCuentaCorriente antes de imprimir los totales
   // const totalEgresosSinCuentaCorriente = resumen
@@ -982,15 +1005,78 @@ export default function CajaPage() {
                 ))}
               </tbody>
             </table>
-            <div className="mb-2 text-right font-semibold">
-              Total ingresos (sin cuenta corriente): {formatCurrency(totalIngresosSinCuentaCorriente, DEFAULT_CURRENCY, DEFAULT_LOCALE)}
-            </div>
-            <div className="mb-4 text-xs text-gray-600">
-              Nota: Los ingresos de &quot;CUENTA CORRIENTE&quot; son informativos y no se suman al total de ingresos de caja. Ese total se reparte en los otros medios de pago a medida que el cliente paga su deuda.
-            </div>
-            <div className="mb-4 text-xs text-gray-600">
-              Saldo inicial del lote abierto: {formatCurrency(loteAbiertoGlobal?.saldo_inicial || 0, DEFAULT_CURRENCY, DEFAULT_LOCALE)}
-            </div>
+            {/* Cálculos para saldo final y medios de pago */}
+            {(() => {
+              // Calcular totales del lote EXCLUYENDO cuenta corriente (ID=4)
+              const cuentaCorrienteNombre = cuentasTesoreria.find(ct => ct.id === 4)?.descripcion || "CUENTA CORRIENTE";
+
+              const totalIngresos = resumen
+                .filter(r => r.cuenta !== cuentaCorrienteNombre)
+                .reduce((sum, r) => sum + r.ingresos, 0);
+
+              const totalEgresos = resumen
+                .filter(r => r.cuenta !== cuentaCorrienteNombre)
+                .reduce((sum, r) => sum + r.egresos, 0);
+
+              const saldoFinal = totalIngresos - totalEgresos;
+
+              // Obtener saldos específicos por ID de cuenta de tesorería
+              const cuenta1 = resumen.find(r => cuentasTesoreria.find(ct => ct.id === 1)?.descripcion === r.cuenta);
+              const cuenta2 = resumen.find(r => cuentasTesoreria.find(ct => ct.id === 2)?.descripcion === r.cuenta);
+
+              const saldoCuenta1 = cuenta1 ? (cuenta1.ingresos - cuenta1.egresos) : 0;
+              const saldoCuenta2 = cuenta2 ? (cuenta2.ingresos - cuenta2.egresos) : 0;
+
+              const nombreCuenta1 = cuentasTesoreria.find(ct => ct.id === 1)?.descripcion || "Cuenta 1";
+              const nombreCuenta2 = cuentasTesoreria.find(ct => ct.id === 2)?.descripcion || "Cuenta 2";
+
+              return (
+                <>
+                  <div className="mb-2 text-right font-semibold">
+                    Total ingresos (sin cuenta corriente): {formatCurrency(totalIngresos, DEFAULT_CURRENCY, DEFAULT_LOCALE)}
+                  </div>
+                  <div className="mb-2 text-right font-semibold">
+                    Total egresos (sin cuenta corriente): {formatCurrency(totalEgresos, DEFAULT_CURRENCY, DEFAULT_LOCALE)}
+                  </div>
+
+                  {/* Saldo final destacado */}
+                  <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded">
+                    <div className="text-lg font-bold text-blue-800 text-center">
+                      Saldo Final: {formatCurrency(saldoFinal, DEFAULT_CURRENCY, DEFAULT_LOCALE)}
+                    </div>
+                    <div className="text-sm text-blue-600 text-center mt-1">
+                      (Total Ingresos - Total Egresos)
+                    </div>
+                  </div>
+
+                  {/* Desglose por cuentas específicas */}
+                  <div className="mb-4 p-3 bg-gray-50 border border-gray-200 rounded">
+                    <div className="text-sm font-semibold mb-2">Saldo por cuenta de tesorería:</div>
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <span className="font-medium">{nombreCuenta1}: </span>
+                        <span className="text-green-600 font-semibold">
+                          {formatCurrency(saldoCuenta1, DEFAULT_CURRENCY, DEFAULT_LOCALE)}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="font-medium">{nombreCuenta2}: </span>
+                        <span className="text-blue-600 font-semibold">
+                          {formatCurrency(saldoCuenta2, DEFAULT_CURRENCY, DEFAULT_LOCALE)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mb-4 text-xs text-gray-600">
+                    Nota: Los ingresos de &quot;CUENTA CORRIENTE&quot; son informativos y no se suman al total de ingresos de caja. Ese total se reparte en los otros medios de pago a medida que el cliente paga su deuda.
+                  </div>
+                  <div className="mb-4 text-xs text-gray-600">
+                    Saldo inicial del lote abierto: {formatCurrency(loteAbiertoGlobal?.saldo_inicial || 0, DEFAULT_CURRENCY, DEFAULT_LOCALE)}
+                  </div>
+                </>
+              );
+            })()}
             <div className="flex justify-end gap-2">
               <button className={`bg-gray-300 px-4 py-2 rounded ${pressClass}`} onClick={() => setShowCierreModal(false)}>Cancelar</button>
               <button className={`bg-blue-600 text-white px-4 py-2 rounded ${pressClass}`} onClick={confirmarCierreCaja}>Confirmar cierre</button>
