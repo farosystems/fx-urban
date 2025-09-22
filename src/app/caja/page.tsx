@@ -2,7 +2,7 @@
 import { useUser } from "@clerk/nextjs";
 import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState } from "react";
 import { getCajas } from "@/services/cajas";
 import { Caja } from "@/types/caja";
 import { format } from "date-fns";
@@ -81,68 +81,79 @@ export default function CajaPage() {
   const [loading, setLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState("");
 
-  // Modificar fetchCajaAbierta para que el supervisor pueda ver la caja abierta de cualquier usuario seleccionado
-  const fetchCajaAbierta = useCallback(async (usuarioId?: number) => {
-    // Si es supervisor y hay un usuario seleccionado, usar ese id; si no, usar el propio
-    let idToUse = usuarioId;
-    if (usuarioDB?.rol === "supervisor" && usuarioSeleccionado) {
-      idToUse = Number(usuarioSeleccionado);
+  // Función para buscar caja abierta sin useCallback para evitar bucles infinitos
+  const fetchCajaAbierta = async (usuarioId?: number) => {
+    try {
+      // Si es supervisor y hay un usuario seleccionado, usar ese id; si no, usar el propio
+      let idToUse = usuarioId;
+      if (usuarioDB?.rol === "supervisor" && usuarioSeleccionado) {
+        idToUse = Number(usuarioSeleccionado);
+      }
+      if (!idToUse) {
+        setCajaAbierta(null);
+        setAperturaActual(null);
+        return;
+      }
+      const lote = await getLoteCajaAbiertaPorUsuario(idToUse);
+      if (lote) {
+        setCajaAbierta(lote.fk_id_caja);
+        setAperturaActual({
+          caja: cajas.find(c => c.id === lote.fk_id_caja)?.descripcion || lote.fk_id_caja,
+          saldoInicial: lote.saldo_inicial?.toString() || '',
+          fechaApertura: lote.fecha_apertura?.slice(0, 10),
+          horaApertura: lote.hora_apertura,
+          fechaCierre: null,
+          horaCierre: null,
+          id_lote: lote.id_lote,
+          fk_id_usuario: lote.fk_id_usuario,
+        });
+      } else {
+        setCajaAbierta(null);
+        setAperturaActual(null);
+      }
+    } catch (error) {
+      console.error('Error fetching caja abierta:', error);
     }
-    if (!idToUse) {
-      setCajaAbierta(null);
-      setAperturaActual(null);
-      return;
-    }
-    const lote = await getLoteCajaAbiertaPorUsuario(idToUse);
-    if (lote) {
-      setCajaAbierta(lote.fk_id_caja);
-      setAperturaActual({
-        caja: cajas.find(c => c.id === lote.fk_id_caja)?.descripcion || lote.fk_id_caja,
-        saldoInicial: lote.saldo_inicial?.toString() || '',
-        fechaApertura: lote.fecha_apertura?.slice(0, 10),
-        horaApertura: lote.hora_apertura,
-        fechaCierre: null,
-        horaCierre: null,
-        id_lote: lote.id_lote,
-        fk_id_usuario: lote.fk_id_usuario,
-      });
-    } else {
-      setCajaAbierta(null);
-      setAperturaActual(null);
-    }
-  }, [usuarioDB, usuarioSeleccionado, cajas]);
+  };
 
-  // Cambiar useEffect para que el array de dependencias esté vacío:
+  // Efecto inicial para cargar datos básicos
   useEffect(() => {
     fetchCajas();
     getCuentasTesoreria().then(setCuentasTesoreria);
-    getUsuarios().then(us => {
-      setUsuarios(us);
-      if (user?.emailAddresses?.[0]?.emailAddress) {
+  }, []);
+
+  // Efecto para cargar usuarios y configurar usuario actual
+  useEffect(() => {
+    if (user?.emailAddresses?.[0]?.emailAddress) {
+      getUsuarios().then(us => {
+        setUsuarios(us);
         const actual = us.find(u => u.email === user.emailAddresses[0].emailAddress);
         setUsuarioActual(actual || null);
         setUsuarioDB(actual || null);
-        if (actual) setUsuarioSeleccionado(actual.id.toString());
-        // Solo llamar a fetchCajaAbierta cuando usuarioActual esté definido
-        if (actual) fetchCajaAbierta(actual.id);
-      }
-    });
-  }, [user, fetchCajaAbierta]);
+        if (actual) {
+          setUsuarioSeleccionado(actual.id.toString());
+          // Llamar fetchCajaAbierta solo una vez al cargar
+          fetchCajaAbierta(actual.id);
+        }
+      });
+    }
+  }, [user?.emailAddresses?.[0]?.emailAddress]);
 
-  // Al cargar usuarios, si es supervisor y no hay usuario seleccionado, seleccionar el primero y mostrar su caja abierta
+  // Efecto para supervisor: seleccionar primer usuario si no hay ninguno seleccionado
   React.useEffect(() => {
     if (usuarioDB?.rol === "supervisor" && usuarios.length > 0 && !usuarioSeleccionado) {
-      setUsuarioSeleccionado(usuarios[0].id.toString());
-      fetchCajaAbierta(Number(usuarios[0].id));
+      const primerUsuario = usuarios[0];
+      setUsuarioSeleccionado(primerUsuario.id.toString());
+      fetchCajaAbierta(Number(primerUsuario.id));
     }
-  }, [usuarioDB, usuarios, usuarioSeleccionado, fetchCajaAbierta]);
+  }, [usuarioDB?.rol, usuarios, usuarioSeleccionado]);
 
-  // Refrescar caja abierta al cambiar usuarioSeleccionado si es supervisor
+  // Efecto para cambio de usuario seleccionado (solo supervisor)
   React.useEffect(() => {
-    if (usuarioDB?.rol === "supervisor" && usuarioSeleccionado) {
+    if (usuarioDB?.rol === "supervisor" && usuarioSeleccionado && usuarios.length > 0) {
       fetchCajaAbierta(Number(usuarioSeleccionado));
     }
-  }, [usuarioSeleccionado, usuarioDB, fetchCajaAbierta]);
+  }, [usuarioSeleccionado, usuarioDB?.rol, usuarios]);
 
   // Estado para el lote abierto global (para supervisor)
   const [loteAbiertoGlobal, setLoteAbiertoGlobal] = useState<LoteOperacion | null>(null);
@@ -301,23 +312,19 @@ export default function CajaPage() {
     const loteACerrar = loteAbiertoGlobal || (aperturaActual && aperturaActual.id_lote ? { id_lote: aperturaActual.id_lote } : null);
     if (!loteACerrar || !loteACerrar.id_lote) return;
 
-    // Traer todos los movimientos reales del lote
+    // Traer todos los movimientos del lote (incluye ventas + movimientos manuales)
     const movimientos = await getDetalleLotesOperaciones(loteACerrar.id_lote);
-
-    // Traer todas las ventas del lote para incluir en el cálculo
-    const ventas = await getOrdenesVenta();
-    const ventasLote = ventas.filter(v => v.fk_id_lote === loteACerrar.id_lote);
 
     // Traer todas las cuentas de tesorería
     const cuentasTesoreria = await getCuentasTesoreria();
 
-    // Sumar ingresos y egresos por cuenta INCLUYENDO movimientos + ventas
+    // Sumar ingresos y egresos por cuenta SOLO de detalle_lotes_operaciones
     const resumenPorCuenta: Record<number, { cuenta: string, ingresos: number, egresos: number }> = {};
     for (const cuenta of cuentasTesoreria) {
       resumenPorCuenta[cuenta.id] = { cuenta: cuenta.descripcion, ingresos: 0, egresos: 0 };
     }
 
-    // Procesar movimientos del lote
+    // Procesar TODOS los movimientos del lote (ventas ya están registradas aquí)
     for (const mov of movimientos) {
       if (resumenPorCuenta[mov.fk_id_cuenta_tesoreria]) {
         if (mov.tipo === 'ingreso') {
@@ -327,23 +334,6 @@ export default function CajaPage() {
         }
       }
     }
-
-    // Procesar ventas del lote
-    const mediosPorVenta = await Promise.all(
-      ventasLote.map(venta => getOrdenesVentaMediosPago(venta.id))
-    );
-    ventasLote.forEach((venta, i) => {
-      const medios = mediosPorVenta[i];
-      for (const m of medios) {
-        if (resumenPorCuenta[m.fk_id_cuenta_tesoreria]) {
-          if (venta.fk_id_tipo_comprobante === 2) { // Nota de crédito
-            resumenPorCuenta[m.fk_id_cuenta_tesoreria].egresos += m.monto_pagado;
-          } else {
-            resumenPorCuenta[m.fk_id_cuenta_tesoreria].ingresos += m.monto_pagado;
-          }
-        }
-      }
-    });
 
     const resumenFinal = Object.values(resumenPorCuenta);
     setResumen(resumenFinal);
