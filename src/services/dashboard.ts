@@ -39,6 +39,20 @@ export interface DashboardData {
     titulo: string;
     mensaje: string;
   }>;
+  gastosPorTipo: Array<{
+    tipo: string;
+    monto: number;
+    color: string;
+  }>;
+  ingresosVsGastos: Array<{
+    periodo: string;
+    ingresos: number;
+    gastos: number;
+  }>;
+  tendenciaGanancias: Array<{
+    periodo: string;
+    ganancias: number;
+  }>;
 }
 
 export async function getDashboardData(periodo: string = 'mes'): Promise<DashboardData> {
@@ -51,7 +65,7 @@ export async function getDashboardData(periodo: string = 'mes'): Promise<Dashboa
     // console.log('Fecha fin filtro:', fechaFin.toISOString());
     
     // Obtener datos básicos sin joins problemáticos
-    const [clientesData, ventasData, variantesData, articulosData, tallesData, coloresData, mediosPagoData, detallesVentaData, cuentasTesoreriaData] = await Promise.all([
+    const [clientesData, ventasData, variantesData, articulosData, tallesData, coloresData, mediosPagoData, detallesVentaData, cuentasTesoreriaData, gastosEmpleadosData, tiposGastoData, detalleLotesData] = await Promise.all([
       supabase.from("entidades").select("*"),
       supabase.from("ordenes_venta")
         .select("*")
@@ -61,9 +75,18 @@ export async function getDashboardData(periodo: string = 'mes'): Promise<Dashboa
       supabase.from("articulos").select("*"),
       supabase.from("talles").select("*"),
       supabase.from("color").select("*"),
-             supabase.from("ordenes_venta_medios_pago").select("*"),
+      supabase.from("ordenes_venta_medios_pago").select("*"),
       supabase.from("ordenes_venta_detalle").select("*"),
-      supabase.from("cuentas_tesoreria").select("*").eq("activo", true)
+      supabase.from("cuentas_tesoreria").select("*").eq("activo", true),
+      supabase.from("gastos_empleados")
+        .select("*")
+        .gte('fecha_gasto', fechaInicio.toISOString())
+        .lte('fecha_gasto', fechaFin.toISOString()),
+      supabase.from("tipo_gasto").select("*"),
+      supabase.from("detalle_lotes_operaciones")
+        .select("*")
+        .gte('fecha_movimiento', fechaInicio.toISOString())
+        .lte('fecha_movimiento', fechaFin.toISOString())
     ]);
 
               // Verificar errores individualmente
@@ -103,6 +126,18 @@ export async function getDashboardData(periodo: string = 'mes'): Promise<Dashboa
        console.error('Error obteniendo cuentas de tesorería:', cuentasTesoreriaData.error);
        throw new Error(`Error obteniendo cuentas de tesorería: ${cuentasTesoreriaData.error.message}`);
      }
+     if (gastosEmpleadosData.error) {
+       console.error('Error obteniendo gastos empleados:', gastosEmpleadosData.error);
+       throw new Error(`Error obteniendo gastos empleados: ${gastosEmpleadosData.error.message}`);
+     }
+     if (tiposGastoData.error) {
+       console.error('Error obteniendo tipos de gasto:', tiposGastoData.error);
+       throw new Error(`Error obteniendo tipos de gasto: ${tiposGastoData.error.message}`);
+     }
+     if (detalleLotesData.error) {
+       console.error('Error obteniendo detalle lotes operaciones:', detalleLotesData.error);
+       throw new Error(`Error obteniendo detalle lotes operaciones: ${detalleLotesData.error.message}`);
+     }
 
      const clientes = clientesData.data || [];
      const ventas = ventasData.data || [];
@@ -113,6 +148,9 @@ export async function getDashboardData(periodo: string = 'mes'): Promise<Dashboa
      const mediosPago = mediosPagoData.data || [];
      const detallesVenta = detallesVentaData.data || [];
      const cuentasTesoreria = cuentasTesoreriaData.data || [];
+     const gastosEmpleados = gastosEmpleadosData.data || [];
+     const tiposGasto = tiposGastoData.data || [];
+     const detalleLotes = detalleLotesData.data || [];
 
      // Combinar datos de productos
      const productos = variantes.map(variante => {
@@ -163,7 +201,10 @@ export async function getDashboardData(periodo: string = 'mes'): Promise<Dashboa
          rankingProductos: [],
          metricasDiarias: [],
          rendimientoVendedores: [],
-         alertas: []
+         alertas: [],
+         gastosPorTipo: [],
+         ingresosVsGastos: [],
+         tendenciaGanancias: []
        };
      }
 
@@ -185,6 +226,15 @@ export async function getDashboardData(periodo: string = 'mes'): Promise<Dashboa
     // Alertas del sistema
     const alertas = generarAlertas(productos, ventas, clientes);
 
+    // Gastos por tipo
+    const gastosPorTipo = calcularGastosPorTipo(gastosEmpleados, tiposGasto);
+
+    // Ingresos vs Gastos por período
+    const ingresosVsGastos = calcularIngresosVsGastos(detalleLotes, periodo);
+
+    // Tendencia de ganancias (solo ingresos para ver la tendencia)
+    const tendenciaGanancias = calcularTendenciaGanancias(detalleLotes, periodo);
+
     return {
       totalVentas,
       totalClientes,
@@ -194,7 +244,10 @@ export async function getDashboardData(periodo: string = 'mes'): Promise<Dashboa
       rankingProductos,
       metricasDiarias,
       rendimientoVendedores,
-      alertas
+      alertas,
+      gastosPorTipo,
+      ingresosVsGastos,
+      tendenciaGanancias
     };
   } catch (error) {
     console.error('Error obteniendo datos del dashboard:', error);
@@ -646,4 +699,353 @@ function generarAlertas(productos: any[], ventas: any[], clientes: any[]): Array
        ventas: Math.round(ventasPorMes[index]),
        meta: 50000
      }));
-   } 
+   }
+
+   // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   function calcularGastosPorTipo(gastosEmpleados: any[], tiposGasto: any[]): Array<{tipo: string, monto: number, color: string}> {
+     if (gastosEmpleados.length === 0 || tiposGasto.length === 0) {
+       return [];
+     }
+
+     // Agrupar gastos por tipo
+     const gastosPorTipoMap: Record<number, number> = {};
+
+     gastosEmpleados.forEach(gasto => {
+       const tipoId = gasto.fk_tipo_gasto;
+       gastosPorTipoMap[tipoId] = (gastosPorTipoMap[tipoId] || 0) + (gasto.monto || 0);
+     });
+
+     // Convertir a array y agregar información del tipo
+     const colores = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#84cc16', '#f97316'];
+
+     return Object.entries(gastosPorTipoMap)
+       .map(([tipoId, monto], index) => {
+         const tipo = tiposGasto.find(t => t.id === parseInt(tipoId));
+         return {
+           tipo: tipo?.descripcion || 'Sin especificar',
+           monto: Math.round(monto),
+           color: colores[index % colores.length]
+         };
+       })
+       .sort((a, b) => b.monto - a.monto);
+   }
+
+   // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   function calcularIngresosVsGastos(detalleLotes: any[], periodo: string): Array<{periodo: string, ingresos: number, gastos: number}> {
+     if (detalleLotes.length === 0) {
+       return generarPeriodosVaciosIngresosGastos(periodo);
+     }
+
+     // Agrupar por período según el tipo seleccionado
+     switch (periodo) {
+       case 'semana':
+         return calcularIngresosGastosPorSemana(detalleLotes);
+       case 'mes':
+         return calcularIngresosGastosPorMes(detalleLotes);
+       case 'trimestre':
+         return calcularIngresosGastosPorTrimestre(detalleLotes);
+       case 'año':
+         return calcularIngresosGastosPorAño(detalleLotes);
+       default:
+         return calcularIngresosGastosPorMes(detalleLotes);
+     }
+   }
+
+   function generarPeriodosVaciosIngresosGastos(periodo: string): Array<{periodo: string, ingresos: number, gastos: number}> {
+     switch (periodo) {
+       case 'semana':
+         return ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(dia => ({
+           periodo: dia,
+           ingresos: 0,
+           gastos: 0
+         }));
+       case 'mes':
+         return ['Sem 1', 'Sem 2', 'Sem 3', 'Sem 4'].map(semana => ({
+           periodo: semana,
+           ingresos: 0,
+           gastos: 0
+         }));
+       case 'trimestre':
+         return ['Mes 1', 'Mes 2', 'Mes 3'].map(mes => ({
+           periodo: mes,
+           ingresos: 0,
+           gastos: 0
+         }));
+       case 'año':
+         return ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'].map(mes => ({
+           periodo: mes,
+           ingresos: 0,
+           gastos: 0
+         }));
+       default:
+         return ['Sem 1', 'Sem 2', 'Sem 3', 'Sem 4'].map(semana => ({
+           periodo: semana,
+           ingresos: 0,
+           gastos: 0
+         }));
+     }
+   }
+
+   function calcularIngresosGastosPorSemana(detalleLotes: any[]): Array<{periodo: string, ingresos: number, gastos: number}> {
+     const dias = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+     const ingresosPorDia = new Array(7).fill(0);
+     const gastosPorDia = new Array(7).fill(0);
+
+     detalleLotes.forEach(detalle => {
+       if (detalle.fecha_movimiento) {
+         try {
+           const fecha = new Date(detalle.fecha_movimiento);
+           const dia = fecha.getDay(); // 0 = Domingo, 1 = Lunes, etc.
+           const indice = dia === 0 ? 6 : dia - 1; // Convertir a índice 0-6 (Lun-Dom)
+
+           if (detalle.tipo === 'ingreso') {
+             ingresosPorDia[indice] += detalle.monto || 0;
+           } else if (detalle.tipo === 'egreso') {
+             gastosPorDia[indice] += detalle.monto || 0;
+           }
+         } catch (error) {
+           console.warn('Error procesando fecha de movimiento:', detalle.fecha_movimiento, error);
+         }
+       }
+     });
+
+     return dias.map((dia, index) => ({
+       periodo: dia,
+       ingresos: Math.round(ingresosPorDia[index]),
+       gastos: Math.round(gastosPorDia[index])
+     }));
+   }
+
+   function calcularIngresosGastosPorMes(detalleLotes: any[]): Array<{periodo: string, ingresos: number, gastos: number}> {
+     const semanas = ['Sem 1', 'Sem 2', 'Sem 3', 'Sem 4'];
+     const ingresosPorSemana = new Array(4).fill(0);
+     const gastosPorSemana = new Array(4).fill(0);
+
+     detalleLotes.forEach(detalle => {
+       if (detalle.fecha_movimiento) {
+         try {
+           const fecha = new Date(detalle.fecha_movimiento);
+           const dia = fecha.getDate();
+           const semana = Math.floor((dia - 1) / 7);
+           if (semana >= 0 && semana < 4) {
+             if (detalle.tipo === 'ingreso') {
+               ingresosPorSemana[semana] += detalle.monto || 0;
+             } else if (detalle.tipo === 'egreso') {
+               gastosPorSemana[semana] += detalle.monto || 0;
+             }
+           }
+         } catch (error) {
+           console.warn('Error procesando fecha de movimiento:', detalle.fecha_movimiento, error);
+         }
+       }
+     });
+
+     return semanas.map((semana, index) => ({
+       periodo: semana,
+       ingresos: Math.round(ingresosPorSemana[index]),
+       gastos: Math.round(gastosPorSemana[index])
+     }));
+   }
+
+   function calcularIngresosGastosPorTrimestre(detalleLotes: any[]): Array<{periodo: string, ingresos: number, gastos: number}> {
+     const meses = ['Mes 1', 'Mes 2', 'Mes 3'];
+     const ingresosPorMes = new Array(3).fill(0);
+     const gastosPorMes = new Array(3).fill(0);
+
+     detalleLotes.forEach(detalle => {
+       if (detalle.fecha_movimiento) {
+         try {
+           const fecha = new Date(detalle.fecha_movimiento);
+           const mes = fecha.getMonth();
+           const mesRelativo = mes % 3;
+
+           if (detalle.tipo === 'ingreso') {
+             ingresosPorMes[mesRelativo] += detalle.monto || 0;
+           } else if (detalle.tipo === 'egreso') {
+             gastosPorMes[mesRelativo] += detalle.monto || 0;
+           }
+         } catch (error) {
+           console.warn('Error procesando fecha de movimiento:', detalle.fecha_movimiento, error);
+         }
+       }
+     });
+
+     return meses.map((mes, index) => ({
+       periodo: mes,
+       ingresos: Math.round(ingresosPorMes[index]),
+       gastos: Math.round(gastosPorMes[index])
+     }));
+   }
+
+   function calcularIngresosGastosPorAño(detalleLotes: any[]): Array<{periodo: string, ingresos: number, gastos: number}> {
+     const meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+     const ingresosPorMes = new Array(12).fill(0);
+     const gastosPorMes = new Array(12).fill(0);
+
+     detalleLotes.forEach(detalle => {
+       if (detalle.fecha_movimiento) {
+         try {
+           const fecha = new Date(detalle.fecha_movimiento);
+           const mes = fecha.getMonth();
+
+           if (detalle.tipo === 'ingreso') {
+             ingresosPorMes[mes] += detalle.monto || 0;
+           } else if (detalle.tipo === 'egreso') {
+             gastosPorMes[mes] += detalle.monto || 0;
+           }
+         } catch (error) {
+           console.warn('Error procesando fecha de movimiento:', detalle.fecha_movimiento, error);
+         }
+       }
+     });
+
+     return meses.map((mes, index) => ({
+       periodo: mes,
+       ingresos: Math.round(ingresosPorMes[index]),
+       gastos: Math.round(gastosPorMes[index])
+     }));
+   }
+
+   // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   function calcularTendenciaGanancias(detalleLotes: any[], periodo: string): Array<{periodo: string, ganancias: number}> {
+     if (detalleLotes.length === 0) {
+       return generarPeriodosVaciosGanancias(periodo);
+     }
+
+     // Agrupar por período según el tipo seleccionado
+     switch (periodo) {
+       case 'semana':
+         return calcularGananciasPorSemana(detalleLotes);
+       case 'mes':
+         return calcularGananciasPorMes(detalleLotes);
+       case 'trimestre':
+         return calcularGananciasPorTrimestre(detalleLotes);
+       case 'año':
+         return calcularGananciasPorAño(detalleLotes);
+       default:
+         return calcularGananciasPorMes(detalleLotes);
+     }
+   }
+
+   function generarPeriodosVaciosGanancias(periodo: string): Array<{periodo: string, ganancias: number}> {
+     switch (periodo) {
+       case 'semana':
+         return ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(dia => ({
+           periodo: dia,
+           ganancias: 0
+         }));
+       case 'mes':
+         return ['Sem 1', 'Sem 2', 'Sem 3', 'Sem 4'].map(semana => ({
+           periodo: semana,
+           ganancias: 0
+         }));
+       case 'trimestre':
+         return ['Mes 1', 'Mes 2', 'Mes 3'].map(mes => ({
+           periodo: mes,
+           ganancias: 0
+         }));
+       case 'año':
+         return ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'].map(mes => ({
+           periodo: mes,
+           ganancias: 0
+         }));
+       default:
+         return ['Sem 1', 'Sem 2', 'Sem 3', 'Sem 4'].map(semana => ({
+           periodo: semana,
+           ganancias: 0
+         }));
+     }
+   }
+
+   function calcularGananciasPorSemana(detalleLotes: any[]): Array<{periodo: string, ganancias: number}> {
+     const dias = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+     const gananciasPorDia = new Array(7).fill(0);
+
+     detalleLotes.forEach(detalle => {
+       if (detalle.fecha_movimiento && detalle.tipo === 'ingreso') {
+         try {
+           const fecha = new Date(detalle.fecha_movimiento);
+           const dia = fecha.getDay(); // 0 = Domingo, 1 = Lunes, etc.
+           const indice = dia === 0 ? 6 : dia - 1; // Convertir a índice 0-6 (Lun-Dom)
+           gananciasPorDia[indice] += detalle.monto || 0;
+         } catch (error) {
+           console.warn('Error procesando fecha de movimiento:', detalle.fecha_movimiento, error);
+         }
+       }
+     });
+
+     return dias.map((dia, index) => ({
+       periodo: dia,
+       ganancias: Math.round(gananciasPorDia[index])
+     }));
+   }
+
+   function calcularGananciasPorMes(detalleLotes: any[]): Array<{periodo: string, ganancias: number}> {
+     const semanas = ['Sem 1', 'Sem 2', 'Sem 3', 'Sem 4'];
+     const gananciasPorSemana = new Array(4).fill(0);
+
+     detalleLotes.forEach(detalle => {
+       if (detalle.fecha_movimiento && detalle.tipo === 'ingreso') {
+         try {
+           const fecha = new Date(detalle.fecha_movimiento);
+           const dia = fecha.getDate();
+           const semana = Math.floor((dia - 1) / 7);
+           if (semana >= 0 && semana < 4) {
+             gananciasPorSemana[semana] += detalle.monto || 0;
+           }
+         } catch (error) {
+           console.warn('Error procesando fecha de movimiento:', detalle.fecha_movimiento, error);
+         }
+       }
+     });
+
+     return semanas.map((semana, index) => ({
+       periodo: semana,
+       ganancias: Math.round(gananciasPorSemana[index])
+     }));
+   }
+
+   function calcularGananciasPorTrimestre(detalleLotes: any[]): Array<{periodo: string, ganancias: number}> {
+     const meses = ['Mes 1', 'Mes 2', 'Mes 3'];
+     const gananciasPorMes = new Array(3).fill(0);
+
+     detalleLotes.forEach(detalle => {
+       if (detalle.fecha_movimiento && detalle.tipo === 'ingreso') {
+         try {
+           const fecha = new Date(detalle.fecha_movimiento);
+           const mes = fecha.getMonth();
+           const mesRelativo = mes % 3;
+           gananciasPorMes[mesRelativo] += detalle.monto || 0;
+         } catch (error) {
+           console.warn('Error procesando fecha de movimiento:', detalle.fecha_movimiento, error);
+         }
+       }
+     });
+
+     return meses.map((mes, index) => ({
+       periodo: mes,
+       ganancias: Math.round(gananciasPorMes[index])
+     }));
+   }
+
+   function calcularGananciasPorAño(detalleLotes: any[]): Array<{periodo: string, ganancias: number}> {
+     const meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+     const gananciasPorMes = new Array(12).fill(0);
+
+     detalleLotes.forEach(detalle => {
+       if (detalle.fecha_movimiento && detalle.tipo === 'ingreso') {
+         try {
+           const fecha = new Date(detalle.fecha_movimiento);
+           const mes = fecha.getMonth();
+           gananciasPorMes[mes] += detalle.monto || 0;
+         } catch (error) {
+           console.warn('Error procesando fecha de movimiento:', detalle.fecha_movimiento, error);
+         }
+       }
+     });
+
+     return meses.map((mes, index) => ({
+       periodo: mes,
+       ganancias: Math.round(gananciasPorMes[index])
+     }));
+   }

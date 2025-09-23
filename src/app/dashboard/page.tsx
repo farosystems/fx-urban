@@ -2,8 +2,8 @@
 
 import { useUser } from "@clerk/nextjs";
 import { useState, useEffect } from "react";
-import { 
-  LineChart, Line, AreaChart, Area,
+import {
+  LineChart, Line, AreaChart, Area, BarChart, Bar, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from "recharts";
 import { 
@@ -70,13 +70,16 @@ export default function DashboardPage() {
     );
   }
 
-  const { 
-    totalVentas, 
-    totalClientes, 
-    totalProductos, 
-    ventasPorPeriodo, 
-    rankingMediosPago, 
-    metricasDiarias
+  const {
+    totalVentas,
+    totalClientes,
+    totalProductos,
+    ventasPorPeriodo,
+    rankingMediosPago = [],
+    metricasDiarias,
+    gastosPorTipo = [],
+    ingresosVsGastos = [],
+    tendenciaGanancias = []
   } = dashboardData;
 
      const promedioVentas = ventasPorPeriodo.length > 0 ? Math.round(totalVentas / ventasPorPeriodo.length) : 0;
@@ -284,10 +287,169 @@ export default function DashboardPage() {
            </div>
         </div>
 
-                                   {/* Gráficos Secundarios */}
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-6">
-                      {/* Métricas Diarias */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 xl:col-span-3">
+                                   {/* Gráfico de Gastos por Tipo */}
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-6">
+          {/* Gastos por Tipo de Gasto */}
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-semibold text-gray-900">Gastos por Tipo</h3>
+              <div className="flex items-center space-x-2">
+                <DollarSign className="w-5 h-5 text-gray-500" />
+                <span className="text-sm text-gray-600">Por período</span>
+              </div>
+            </div>
+            {gastosPorTipo.length > 0 ? (
+              <ResponsiveContainer width="100%" height={350}>
+                <BarChart data={gastosPorTipo}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                  <XAxis
+                    dataKey="tipo"
+                    stroke="#64748b"
+                    fontSize={12}
+                    angle={-45}
+                    textAnchor="end"
+                    height={80}
+                  />
+                  <YAxis
+                    stroke="#64748b"
+                    fontSize={12}
+                    tickFormatter={(value) => `$${value.toLocaleString()}`}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: 'white',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '8px',
+                      boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+                    }}
+                    formatter={(value: number) => [`$${value.toLocaleString()}`, 'Monto']}
+                  />
+                  <Bar dataKey="monto">
+                    {gastosPorTipo.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="text-center py-8 text-gray-500">
+                <DollarSign className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                <p>No hay datos de gastos</p>
+              </div>
+            )}
+          </div>
+
+          {/* Ingresos vs Gastos */}
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-semibold text-gray-900">Ingresos vs Gastos</h3>
+              <div className="flex items-center space-x-4">
+                <div className="flex items-center space-x-2">
+                  <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                  <span className="text-sm text-gray-600">Ingresos</span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                  <span className="text-sm text-gray-600">Gastos</span>
+                </div>
+              </div>
+            </div>
+            {ingresosVsGastos.length > 0 ? (
+              <ResponsiveContainer width="100%" height={350}>
+                <BarChart data={ingresosVsGastos}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                  <XAxis
+                    dataKey="periodo"
+                    stroke="#64748b"
+                    fontSize={12}
+                  />
+                  <YAxis
+                    stroke="#64748b"
+                    fontSize={12}
+                    tickFormatter={(value) => `$${value.toLocaleString()}`}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: 'white',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '8px',
+                      boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+                    }}
+                    formatter={(value: number, name: string) => [
+                      `$${value.toLocaleString()}`,
+                      name === 'ingresos' ? 'Ingresos' : 'Gastos'
+                    ]}
+                  />
+                  <Bar dataKey="ingresos" fill="#10b981" name="ingresos" />
+                  <Bar dataKey="gastos" fill="#ef4444" name="gastos" />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="text-center py-8 text-gray-500">
+                <Activity className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                <p>No hay datos de movimientos</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+                                   {/* Gráfico de Tendencia de Ganancias */}
+        <div className="grid grid-cols-1 gap-6 mb-6">
+          {/* Tendencia de Ganancias */}
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-lg font-semibold text-gray-900">Tendencia de Ganancias</h3>
+                <div className="flex items-center space-x-2">
+                  <TrendingUp className="w-5 h-5 text-green-500" />
+                  <span className="text-sm text-gray-600">Ingresos totales</span>
+                </div>
+              </div>
+              {tendenciaGanancias.length > 0 ? (
+                <ResponsiveContainer width="100%" height={350}>
+                  <LineChart data={tendenciaGanancias}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                    <XAxis
+                      dataKey="periodo"
+                      stroke="#64748b"
+                      fontSize={12}
+                    />
+                    <YAxis
+                      stroke="#64748b"
+                      fontSize={12}
+                      tickFormatter={(value) => `$${value.toLocaleString()}`}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: 'white',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '8px',
+                        boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+                      }}
+                      formatter={(value: number) => [`$${value.toLocaleString()}`, 'Ganancias']}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="ganancias"
+                      stroke="#10b981"
+                      strokeWidth={3}
+                      dot={{ fill: '#10b981', strokeWidth: 2, r: 5 }}
+                      activeDot={{ r: 8, stroke: '#10b981', strokeWidth: 2 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  <TrendingUp className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                  <p>No hay datos de ganancias</p>
+                </div>
+              )}
+            </div>
+        </div>
+
+                                   {/* Gráfico de Actividad Diaria */}
+        <div className="grid grid-cols-1 gap-6 mb-6">
+          {/* Métricas Diarias */}
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-lg font-semibold text-gray-900">Actividad Diaria</h3>
               <Calendar className="w-5 h-5 text-gray-500" />
@@ -324,7 +486,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-         
+
       </div>
     </div>
   );
