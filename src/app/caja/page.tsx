@@ -38,6 +38,7 @@ import { getClientes } from "@/services/clientes";
 import { getPagosCuentaCorrienteConDetalles } from "@/services/pagosCuentaCorriente";
 import { LoteOperacion } from "@/types/loteOperacion";
 import { generateGastosPDF } from "@/utils/generateGastosPDF";
+import { supabase } from "@/lib/supabaseClient";
 
 interface AperturaCaja {
   caja: string;
@@ -458,6 +459,13 @@ export default function CajaPage() {
         2: { halign: "right" }
       }
     });
+
+    // Obtener movimientos de detalle_lotes_operaciones para agregar al PDF
+    let movimientosDetalle: any[] = [];
+    if (aperturaActual && aperturaActual.id_lote) {
+      movimientosDetalle = await getDetalleLotesOperaciones(aperturaActual.id_lote);
+    }
+
     const afterTablesY = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable ? (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 8 : yDatos + 20;
     // Totales alineados a la derecha
     let afterTotalesY = afterTablesY + 28;
@@ -498,6 +506,85 @@ export default function CajaPage() {
       doc.text(`Total de pagos: ${formatCurrency(totalPagos, DEFAULT_CURRENCY, DEFAULT_LOCALE)}`, 150, pagosFinalY, { align: "right" });
       afterTotalesY = pagosFinalY + 8;
     }
+
+    // Tabla de movimientos detallados de detalle_lotes_operaciones
+    if (movimientosDetalle.length > 0) {
+      doc.setFontSize(11);
+      doc.text("Movimientos detallados", 20, afterTotalesY);
+
+      const movimientosTableData = movimientosDetalle.map(mov => {
+        const cuentaDescripcion = cuentasTesoreria.find(ct => ct.id === mov.fk_id_cuenta_tesoreria)?.descripcion || "N/A";
+        return [
+          mov.idd.toString(),
+          new Date(mov.fecha_movimiento).toLocaleString(),
+          mov.tipo === 'ingreso' ? 'Ingreso' : 'Egreso',
+          cuentaDescripcion,
+          formatCurrency(mov.monto, DEFAULT_CURRENCY, DEFAULT_LOCALE)
+        ];
+      });
+
+      autoTable(doc, {
+        startY: afterTotalesY + 3,
+        head: [["ID", "Fecha", "Tipo", "Cuenta Tesorería", "Monto"]],
+        body: movimientosTableData,
+        theme: "grid",
+        headStyles: {
+          fillColor: [66, 139, 202],
+          textColor: 255,
+          fontStyle: "bold"
+        },
+        styles: {
+          fontSize: 8
+        },
+        columnStyles: {
+          4: { halign: "right" }
+        }
+      });
+
+      const movimientosFinalY = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 6;
+      afterTotalesY = movimientosFinalY + 8;
+    }
+
+    // Tabla de entradas unificadas
+    if (aperturaActual && aperturaActual.id_lote) {
+      const entradasUnificadas = await getEntradasUnificadasLote(aperturaActual.id_lote);
+
+      if (entradasUnificadas.length > 0) {
+        doc.setFontSize(11);
+        doc.text("Entradas Unificadas", 20, afterTotalesY);
+
+        const entradasTableData = entradasUnificadas.map(entrada => [
+          new Date(entrada.fecha).toLocaleString(),
+          entrada.tipo,
+          entrada.cliente,
+          entrada.referencia,
+          entrada.cuenta_tesoreria,
+          formatCurrency(entrada.monto, DEFAULT_CURRENCY, DEFAULT_LOCALE)
+        ]);
+
+        autoTable(doc, {
+          startY: afterTotalesY + 3,
+          head: [["Fecha", "Tipo", "Cliente", "Referencia", "Cuenta", "Monto"]],
+          body: entradasTableData,
+          theme: "grid",
+          headStyles: {
+            fillColor: [34, 197, 94],
+            textColor: 255,
+            fontStyle: "bold"
+          },
+          styles: {
+            fontSize: 8
+          },
+          columnStyles: {
+            5: { halign: "right" }
+          }
+        });
+
+        const entradasFinalY = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 6;
+        afterTotalesY = entradasFinalY + 8;
+      }
+    }
+
     // Nota aclaratoria al final
     doc.setFontSize(8);
     doc.setTextColor(120);
@@ -706,10 +793,84 @@ export default function CajaPage() {
     doc.text(`Total Ingresos: ${formatCurrency(totalIngresos, DEFAULT_CURRENCY, DEFAULT_LOCALE)}`, 20, finalY + 10);
     doc.text(`Total Egresos: ${formatCurrency(totalEgresos, DEFAULT_CURRENCY, DEFAULT_LOCALE)}`, 20, finalY + 20);
     doc.text(`Saldo Final: ${formatCurrency(saldoFinal, DEFAULT_CURRENCY, DEFAULT_LOCALE)}`, 20, finalY + 30);
-    
+
+    // Tabla de movimientos detallados
+    let movimientosY = finalY + 50;
+    if (movimientos.length > 0) {
+      doc.setFontSize(12);
+      doc.text("Movimientos detallados", 20, movimientosY);
+
+      const movimientosTableData = movimientos.map(mov => {
+        const cuentaDescripcion = cuentasTesoreria.find(ct => ct.id === mov.fk_id_cuenta_tesoreria)?.descripcion || "N/A";
+        return [
+          mov.idd.toString(),
+          new Date(mov.fecha_movimiento).toLocaleString(),
+          mov.tipo === 'ingreso' ? 'Ingreso' : 'Egreso',
+          cuentaDescripcion,
+          formatCurrency(mov.monto, DEFAULT_CURRENCY, DEFAULT_LOCALE)
+        ];
+      });
+
+      autoTable(doc, {
+        startY: movimientosY + 5,
+        head: [["ID", "Fecha", "Tipo", "Cuenta Tesorería", "Monto"]],
+        body: movimientosTableData,
+        theme: "grid",
+        headStyles: {
+          fillColor: [66, 139, 202],
+          textColor: 255,
+          fontStyle: "bold"
+        },
+        styles: {
+          fontSize: 9
+        },
+        columnStyles: {
+          4: { halign: "right" }
+        }
+      });
+
+      movimientosY = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10;
+    }
+
+    // Tabla de entradas unificadas
+    const entradasUnificadas = await getEntradasUnificadasLote(id_lote);
+    if (entradasUnificadas.length > 0) {
+      doc.setFontSize(12);
+      doc.text("Entradas Unificadas", 20, movimientosY);
+
+      const entradasTableData = entradasUnificadas.map(entrada => [
+        new Date(entrada.fecha).toLocaleString(),
+        entrada.tipo,
+        entrada.cliente,
+        entrada.referencia,
+        entrada.cuenta_tesoreria,
+        formatCurrency(entrada.monto, DEFAULT_CURRENCY, DEFAULT_LOCALE)
+      ]);
+
+      autoTable(doc, {
+        startY: movimientosY + 5,
+        head: [["Fecha", "Tipo", "Cliente", "Referencia", "Cuenta", "Monto"]],
+        body: entradasTableData,
+        theme: "grid",
+        headStyles: {
+          fillColor: [34, 197, 94],
+          textColor: 255,
+          fontStyle: "bold"
+        },
+        styles: {
+          fontSize: 9
+        },
+        columnStyles: {
+          5: { halign: "right" }
+        }
+      });
+
+      movimientosY = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10;
+    }
+
     // Resumen de órdenes de venta
     if (ventasLote && ventasLote.length > 0) {
-      const resumenY2 = finalY + 40;
+      const resumenY2 = movimientosY;
       doc.setFontSize(14);
       doc.text("Órdenes de venta del lote", 20, resumenY2);
       doc.setFontSize(10);
@@ -762,6 +923,111 @@ export default function CajaPage() {
     doc.text(`Generado el ${format(new Date(), "dd/MM/yyyy HH:mm")}`, 20, 280);
     const fileName = `cierre_caja_lote_${id_lote}_${format(new Date(), "yyyy-MM-dd_HH-mm")}.pdf`;
     doc.save(fileName);
+  }
+
+  // Función para obtener entradas unificadas del lote
+  async function getEntradasUnificadasLote(idLote: number) {
+    const entradas: any[] = [];
+
+    try {
+      // 1. VENTAS DIRECTAS del lote (medios de pago que no sean cuenta corriente fk_id_cuenta_tesoreria != 4)
+      const { data: mediosPago } = await supabase
+        .from('ordenes_venta_medios_pago')
+        .select(`
+          monto_pagado,
+          fk_id_cuenta_tesoreria,
+          cuentas_tesoreria!fk_id_cuenta_tesoreria(descripcion),
+          ordenes_venta!fk_id_orden(
+            id,
+            fecha,
+            fk_id_lote,
+            fk_id_entidades,
+            anulada,
+            entidades!fk_id_entidades(razon_social)
+          )
+        `)
+        .neq('fk_id_cuenta_tesoreria', 4);
+
+      if (mediosPago) {
+        mediosPago.forEach(medio => {
+          // Solo incluir medios de pago de ventas del lote actual y no anuladas
+          if (medio.ordenes_venta?.fk_id_lote === idLote && !medio.ordenes_venta?.anulada) {
+            entradas.push({
+              fecha: medio.ordenes_venta.fecha,
+              monto: medio.monto_pagado,
+              cuenta_tesoreria: medio.cuentas_tesoreria?.descripcion || 'N/A',
+              tipo: 'Venta Directa',
+              cliente: medio.ordenes_venta.entidades?.razon_social || 'Cliente no especificado',
+              referencia: `Venta #${medio.ordenes_venta.id}`
+            });
+          }
+        });
+      }
+
+      // 2. PAGOS DE CUENTA CORRIENTE del lote - obtener por fecha del lote
+      const lotes = await getLotesOperaciones();
+      const lote = lotes.find(l => l.id_lote === idLote);
+
+      if (lote && lote.fecha_apertura) {
+        // Obtener pagos de cuenta corriente que tienen fk_id_lote
+        const pagosCuentaCorriente = await getPagosCuentaCorrienteConDetalles();
+        const pagosCCLote = pagosCuentaCorriente.filter(pago => pago.fk_id_lote === idLote);
+
+        pagosCCLote.forEach(pago => {
+          entradas.push({
+            fecha: pago.creado_el,
+            monto: pago.monto,
+            cuenta_tesoreria: pago.cuenta_tesoreria?.descripcion || 'N/A',
+            tipo: 'Pago Cuenta Corriente',
+            cliente: pago.cuenta_corriente?.cliente?.razon_social || 'Cliente no especificado',
+            referencia: `Pago CC #${pago.id}`
+          });
+        });
+      }
+
+      // 3. PAGOS DE DEUDAS (filtrar por fecha del lote)
+      if (lote && lote.fecha_apertura) {
+        try {
+          const { data: pagosDeudaDetalle } = await supabase
+            .from('pagos_deudas')
+            .select(`
+              id,
+              fecha_pago,
+              creado_el,
+              monto,
+              descripcion,
+              fk_id_cuenta_tesoreria,
+              cuentas_tesoreria!fk_id_cuenta_tesoreria(descripcion),
+              entidades!fk_id_cliente(razon_social)
+            `)
+            .gte('fecha_pago', lote.fecha_apertura.split('T')[0])
+            .lte('fecha_pago', lote.fecha_cierre ? lote.fecha_cierre.split('T')[0] : new Date().toISOString().split('T')[0]);
+
+          if (pagosDeudaDetalle && pagosDeudaDetalle.length > 0) {
+            pagosDeudaDetalle.forEach(pago => {
+              entradas.push({
+                fecha: pago.fecha_pago || pago.creado_el,
+                monto: pago.monto,
+                cuenta_tesoreria: pago.cuentas_tesoreria?.descripcion || 'N/A',
+                tipo: 'Pago de Deuda',
+                cliente: pago.entidades?.razon_social || 'Cliente no especificado',
+                referencia: pago.descripcion || `Pago Deuda #${pago.id}`
+              });
+            });
+          }
+        } catch (error) {
+          console.log('No se pudieron obtener pagos de deudas:', error);
+        }
+      }
+
+      // Ordenar por fecha
+      entradas.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
+
+    } catch (error) {
+      console.error('Error obteniendo entradas unificadas:', error);
+    }
+
+    return entradas;
   }
 
   // Animación de presión y hover para botones
