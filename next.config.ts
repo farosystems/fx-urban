@@ -3,10 +3,10 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   // Configuración para manejo de errores en producción
   serverExternalPackages: ['@supabase/supabase-js'],
-  
+
   // Configuración para Vercel
   output: 'standalone',
-  
+
   // Configuración de imágenes
   images: {
     domains: ['localhost'],
