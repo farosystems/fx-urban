@@ -41,15 +41,15 @@ export function ClientesContentSecure() {
   // Memoizar clientes filtrados
   const clientesFiltrados = useMemo(() => {
     if (!filtro.trim()) return clientes;
-    
+
     const filtroLower = filtro.toLowerCase();
     return clientes.filter(cliente => {
       return (
-        cliente.razon_social.toLowerCase().includes(filtroLower) ||
-        cliente.email.toLowerCase().includes(filtroLower) ||
-        cliente.num_doc.toLowerCase().includes(filtroLower) ||
-        cliente.telefono.toLowerCase().includes(filtroLower) ||
-        cliente.categoria_iva.toLowerCase().includes(filtroLower)
+        (cliente.razon_social?.toLowerCase() || '').includes(filtroLower) ||
+        (cliente.email?.toLowerCase() || '').includes(filtroLower) ||
+        (cliente.num_doc?.toLowerCase() || '').includes(filtroLower) ||
+        (cliente.telefono?.toLowerCase() || '').includes(filtroLower) ||
+        (cliente.categoria_iva?.toLowerCase() || '').includes(filtroLower)
       );
     });
   }, [clientes, filtro]);
