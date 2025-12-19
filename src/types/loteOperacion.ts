@@ -20,6 +20,9 @@ export interface DetalleLoteOperacion {
   fk_id_cuenta_tesoreria: number;
   tipo: 'ingreso' | 'egreso';
   monto: number;
+  fecha_movimiento: string | null;
 }
 
-export type CreateDetalleLoteOperacionData = Omit<DetalleLoteOperacion, 'idd'> 
+export type CreateDetalleLoteOperacionData = Omit<DetalleLoteOperacion, 'idd' | 'fecha_movimiento'> & {
+  fecha_movimiento?: string | null;
+} 

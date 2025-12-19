@@ -804,7 +804,7 @@ export default function CajaPage() {
         const cuentaDescripcion = cuentasTesoreria.find(ct => ct.id === mov.fk_id_cuenta_tesoreria)?.descripcion || "N/A";
         return [
           mov.idd.toString(),
-          new Date(mov.fecha_movimiento).toLocaleString(),
+          mov.fecha_movimiento ? new Date(mov.fecha_movimiento).toLocaleString() : "N/A",
           mov.tipo === 'ingreso' ? 'Ingreso' : 'Egreso',
           cuentaDescripcion,
           formatCurrency(mov.monto, DEFAULT_CURRENCY, DEFAULT_LOCALE)
@@ -951,14 +951,17 @@ export default function CajaPage() {
       if (mediosPago) {
         mediosPago.forEach(medio => {
           // Solo incluir medios de pago de ventas del lote actual y no anuladas
-          if (medio.ordenes_venta?.fk_id_lote === idLote && !medio.ordenes_venta?.anulada) {
+          const ordenVenta = Array.isArray(medio.ordenes_venta) ? medio.ordenes_venta[0] : medio.ordenes_venta;
+          if (ordenVenta?.fk_id_lote === idLote && !ordenVenta?.anulada) {
+            const entidad = Array.isArray(ordenVenta.entidades) ? ordenVenta.entidades[0] : ordenVenta.entidades;
+            const cuentaTesoreria = Array.isArray(medio.cuentas_tesoreria) ? medio.cuentas_tesoreria[0] : medio.cuentas_tesoreria;
             entradas.push({
-              fecha: medio.ordenes_venta.fecha,
+              fecha: ordenVenta.fecha,
               monto: medio.monto_pagado,
-              cuenta_tesoreria: medio.cuentas_tesoreria?.descripcion || 'N/A',
+              cuenta_tesoreria: cuentaTesoreria?.descripcion || 'N/A',
               tipo: 'Venta Directa',
-              cliente: medio.ordenes_venta.entidades?.razon_social || 'Cliente no especificado',
-              referencia: `Venta #${medio.ordenes_venta.id}`
+              cliente: entidad?.razon_social || 'Cliente no especificado',
+              referencia: `Venta #${ordenVenta.id}`
             });
           }
         });
@@ -1005,12 +1008,14 @@ export default function CajaPage() {
 
           if (pagosDeudaDetalle && pagosDeudaDetalle.length > 0) {
             pagosDeudaDetalle.forEach(pago => {
+              const cuentaTesoreria = Array.isArray(pago.cuentas_tesoreria) ? pago.cuentas_tesoreria[0] : pago.cuentas_tesoreria;
+              const entidad = Array.isArray(pago.entidades) ? pago.entidades[0] : pago.entidades;
               entradas.push({
                 fecha: pago.fecha_pago || pago.creado_el,
                 monto: pago.monto,
-                cuenta_tesoreria: pago.cuentas_tesoreria?.descripcion || 'N/A',
+                cuenta_tesoreria: cuentaTesoreria?.descripcion || 'N/A',
                 tipo: 'Pago de Deuda',
-                cliente: pago.entidades?.razon_social || 'Cliente no especificado',
+                cliente: entidad?.razon_social || 'Cliente no especificado',
                 referencia: pago.descripcion || `Pago Deuda #${pago.id}`
               });
             });
